@@ -2,6 +2,8 @@ import subprocess
 import random
 import socket
 import ipaddress
+import requests
+import re
 
 
 BLUE = "\033[34m"
@@ -62,7 +64,80 @@ def display_help():
 
 
 def website_info(link):
-    print(f"Gathering information for the website: {link}")
+    print(f"\nInitiating reconnaissance for: {BLUE}{link}{RESET}\n")
+    
+    # Create output directory for this scan
+    scan_dir = f"scans/{link}"
+    subprocess.run(["mkdir", "-p", scan_dir])
+    
+    # Phase 1: Subdomain Enumeration
+    print("[+] Phase 1: Enumerating subdomains...")
+    subdomains = set()
+    
+    # Subfinder
+    try:
+        subfinder_output = subprocess.run(["subfinder", "-d", link], capture_output=True, text=True)
+        subdomains.update(subfinder_output.stdout.splitlines())
+    except Exception as e:
+        print(f"[-] Subfinder failed: {e}")
+    
+    # Amass (passive mode for speed)
+    try:
+        amass_output = subprocess.run(["amass", "enum", "-passive", "-d", link], capture_output=True, text=True)
+        subdomains.update(amass_output.stdout.splitlines())
+    except Exception as e:
+        print(f"[-] Amass failed: {e}")
+    
+    # Save all subdomains
+    with open(f"{scan_dir}/subdomains.txt", "w") as f:
+        f.write("\n".join(sorted(subdomains)))
+    
+    print(f"[+] Found {len(subdomains)} subdomains")
+    
+    # Phase 2: Check for alive domains
+    print("\n[+] Phase 2: Checking for alive domains...")
+    alive_domains = []
+    
+    for subdomain in subdomains:
+        try:
+            response = requests.head(f"http://{subdomain}", timeout=5)
+            if response.status_code == 200:
+                alive_domains.append(subdomain)
+                print(f"    [*] Found alive domain: {subdomain}")
+        except:
+            continue
+    
+    # Phase 3: Service and Vulnerability Scanning
+    print("\n[+] Phase 3: Scanning for services and vulnerabilities...")
+    
+    for domain in alive_domains:
+        print(f"\n[*] Scanning {domain}")
+        
+        # Nmap service detection and vulnerability scanning
+        try:
+            nmap_cmd = [
+                "nmap", "-sV", "-sC",  # Version detection and default scripts
+                "--script", "vuln",     # Vulnerability scanning scripts
+                "-oN", f"{scan_dir}/{domain}_nmap.txt",
+                domain
+            ]
+            subprocess.run(nmap_cmd)
+            
+            # Parse nmap output for vulnerabilities
+            with open(f"{scan_dir}/{domain}_nmap.txt", "r") as f:
+                scan_result = f.read()
+                
+                # Look for CVE references
+                cves = re.findall(r"CVE-\d{4}-\d+", scan_result)
+                if cves:
+                    print("\n[!] Vulnerabilities found:")
+                    for cve in cves:
+                        print(f"    - {cve}")
+                        print(f"      Reference: https://nvd.nist.gov/vuln/detail/{cve}")
+                        print(f"      FortiCore Guide: https://forticore.org/guides/{cve}")
+        
+        except Exception as e:
+            print(f"[-] Nmap scan failed for {domain}: {e}")
 
 
 def server_info(server_name):
@@ -147,8 +222,6 @@ def main():
     print("Type "+f"{BLUE}-h {RESET}" +" or "+f"{BLUE}--help {RESET}"+"for a list of commands.")
     print("Type "+f"{BLUE}exit{RESET}"+" or "+f"{BLUE}quit {RESET}"+"to leave.\n")
     custom_terminal()
-
-    
     
 
 if __name__ == "__main__":
