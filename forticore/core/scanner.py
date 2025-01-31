@@ -1,36 +1,55 @@
-from abc import ABC, abstractmethod
+import os
+import subprocess
+from typing import Set
 from pathlib import Path
-from ..utils.logger import Logger
 from ..utils.report_generator import ReportGenerator
-from typing import Dict, Any
+import logging
 
-class BaseScanner(ABC):
-    def __init__(self, target: str, output_dir: str, report_format: str = "html"):
+class BaseScanner:
+    def __init__(self, target: str, output_dir: str):
+        """
+        Initialize the base scanner
+        Args:
+            target: Target to scan
+            output_dir: Directory to store scan results
+        """
         self.target = target
         self.output_dir = Path(output_dir)
-        self.logger = Logger.get_logger(__name__)
-        self.report_generator = ReportGenerator(self.output_dir, format=report_format)
-        self.scan_results: Dict[str, Any] = {}
+        self.logger = logging.getLogger(__name__)
         
-    def setup(self):
-        """Prepare scanning environment"""
+        # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        
-    @abstractmethod
-    def run(self):
-        """Main scanning method to be implemented by subclasses"""
-        pass
-        
-    def cleanup(self):
-        """Cleanup after scanning"""
+
+    def setup(self):
+        """Setup required for scanning"""
         pass
 
-    def generate_report(self, data: Dict[str, Any], report_name: str = "report") -> Path:
-        """Generate a report from the provided data"""
+    def run_subfinder(self) -> Set[str]:
+        """Run subfinder for subdomain enumeration"""
         try:
-            report_path = self.report_generator.generate(data, report_name)
-            self.logger.info(f"Report generated at: {report_path}")
-            return report_path
+            result = subprocess.run(
+                ['subfinder', '-d', self.target, '-silent'],
+                capture_output=True,
+                text=True
+            )
+            return set(result.stdout.strip().split('\n')) if result.stdout else set()
         except Exception as e:
-            self.logger.error(f"Failed to generate report: {e}")
-            return None
+            self.logger.error(f"Error running subfinder: {e}")
+            return set()
+
+    def run_amass(self) -> Set[str]:
+        """Run amass for subdomain enumeration"""
+        try:
+            result = subprocess.run(
+                ['amass', 'enum', '-passive', '-d', self.target],
+                capture_output=True,
+                text=True
+            )
+            return set(result.stdout.strip().split('\n')) if result.stdout else set()
+        except Exception as e:
+            self.logger.error(f"Error running amass: {e}")
+            return set()
+
+    def run(self) -> None:
+        """Run the scanner"""
+        raise NotImplementedError("Subclasses must implement run()")

@@ -14,14 +14,21 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class SubdomainScanner(BaseScanner):
     def __init__(self, target: str, report_format: str = "html"):
-        super().__init__(target, f"scans/{target}")
+        """
+        Initialize the subdomain scanner
+        Args:
+            target: Target domain to scan
+            report_format: Format for the report (html, json, or yaml)
+        """
+        output_dir = f"scans/{target}"
+        super().__init__(target, output_dir)
         self.subdomains: Set[str] = set()
         self.alive_domains: list = []
         self.vulnerabilities: Dict[str, list] = {}
         self.ports: Dict[str, list] = {}
         self.technologies: Dict[str, list] = {}
         self.report_format = report_format
-        self.report_generator = ReportGenerator(f"scans/{target}")
+        self.report_generator = ReportGenerator(output_dir)
 
     def print_status(self, message: str, status: str = "INFO"):
         colors = {
