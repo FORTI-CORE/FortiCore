@@ -87,11 +87,18 @@ class FortiCoreTerminal:
             domain: Target domain
             report_format: Report format (html, json, csv, or yaml)
         """
-        scanner = SubdomainScanner(domain, report_format=report_format)
-        subdomains = scanner.run()
-        print(f"\nScan complete for {domain}")
-        print(f"Found {len(subdomains)} subdomains")
-        print(f"Report available at: {scanner.output_dir}")
+        print(f"\n{BLUE}[*] Starting scan for {domain}{RESET}\n")
+        
+        try:
+            scanner = SubdomainScanner(domain, report_format=report_format)
+            subdomains = scanner.run()
+            
+            if not subdomains:
+                print(f"\n{BLUE}[!] No results found for {domain}{RESET}")
+                return
+            
+        except Exception as e:
+            print(f"\n{BLUE}[!] Error during scan: {e}{RESET}")
 
     def server_info(self, server_name: str):
         print(f"Gathering information for the server: {server_name}")
