@@ -6,15 +6,22 @@ from typing import Set, Dict, Any
 from pathlib import Path
 from colorama import Fore, Style
 import nmap
+import urllib3
+from ...utils.report_generator import ReportGenerator
+
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class SubdomainScanner(BaseScanner):
     def __init__(self, target: str, report_format: str = "html"):
-        super().__init__(target, f"scans/{target}", report_format)
+        super().__init__(target, f"scans/{target}")
         self.subdomains: Set[str] = set()
         self.alive_domains: list = []
         self.vulnerabilities: Dict[str, list] = {}
         self.ports: Dict[str, list] = {}
         self.technologies: Dict[str, list] = {}
+        self.report_format = report_format
+        self.report_generator = ReportGenerator(f"scans/{target}")
 
     def print_status(self, message: str, status: str = "INFO"):
         colors = {
@@ -109,11 +116,11 @@ class SubdomainScanner(BaseScanner):
             self.print_status(f"Error scanning ports: {e}", "ERROR")
 
     def run(self) -> Set[str]:
-        self.print_status(f"Starting reconnaissance for {self.target}", "INFO")
+        self.print_status(f"Starting reconnaissance for {self.target}")
         self.setup()
         
         # Collect subdomains
-        self.print_status("Enumerating subdomains...", "INFO")
+        self.print_status("Enumerating subdomains...")
         self.subdomains.update(self.run_subfinder())
         self.subdomains.update(self.run_amass())
         
@@ -135,7 +142,8 @@ class SubdomainScanner(BaseScanner):
             "target": self.target,
             "summary": {
                 "total_subdomains": len(self.subdomains),
-                "alive_domains": len(self.alive_domains)
+                "alive_domains": len(self.alive_domains),
+                "total_open_ports": sum(len(ports) for ports in self.ports.values())
             },
             "details": {
                 "all_subdomains": list(sorted(self.subdomains)),
@@ -147,7 +155,11 @@ class SubdomainScanner(BaseScanner):
 
         # Generate report
         try:
-            report_path = self.generate_report(scan_results, f"{self.target}_scan_report")
+            report_path = self.report_generator.generate_report(
+                scan_results, 
+                f"{self.target}_scan_report",
+                format=self.report_format
+            )
             self.print_status(f"Report generated: {report_path}", "SUCCESS")
         except Exception as e:
             self.print_status(f"Error generating report: {e}", "ERROR")
