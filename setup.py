@@ -25,6 +25,7 @@ setup(
         "pyyaml>=5.4.1",
         "colorama>=0.4.4",
         "python-nmap>=0.7.1",
+        "pyfiglet",
     ],
     entry_points={
         "console_scripts": [

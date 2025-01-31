@@ -8,7 +8,6 @@ from colorama import Fore, Style, init
 import nmap
 import urllib3
 from ...utils.report_generator import ReportGenerator
-import figlet
 import re
 
 # Initialize colorama
@@ -46,13 +45,19 @@ class SubdomainScanner(BaseScanner):
         print(f"{color}[{status}]{Style.RESET_ALL} {message}")
 
     def show_banner(self):
-        try:
-            subprocess.run(['figlet', '-f', 'slant', 'FortiCore'])
-            print(f"{Fore.BLUE}A Comprehensive Penetration Testing Framework{Style.RESET_ALL}\n")
-            print(f"{Fore.GREEN}Version: 1.0.0{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}Target: {self.target}{Style.RESET_ALL}\n")
-        except:
-            print("\nFortiCore - Penetration Testing Framework\n")
+        """Display FortiCore banner"""
+        banner = """
+███████╗ ██████╗ ██████╗ ████████╗██╗ ██████╗ ██████╗ ██████╗ ███████╗
+██╔════╝██╔═══██╗██╔══██╗╚══██╔══╝██║██╔════╝██╔═══██╗██╔══██╗██╔════╝
+█████╗  ██║   ██║██████╔╝   ██║   ██║██║     ██║   ██║██████╔╝█████╗  
+██╔══╝  ██║   ██║██╔══██╗   ██║   ██║██║     ██║   ██║██╔══██╗██╔══╝  
+██║     ╚██████╔╝██║  ██║   ██║   ██║╚██████╗╚██████╔╝██║  ██║███████╗
+╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
+        """
+        print(f"{Fore.RED}{banner}{Style.RESET_ALL}")
+        print(f"{Fore.BLUE}[*] A Comprehensive Penetration Testing Framework{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}[*] Version: 1.0.0{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}[*] Target: {self.target}{Style.RESET_ALL}\n")
 
     def run_subfinder(self) -> Set[str]:
         try:
