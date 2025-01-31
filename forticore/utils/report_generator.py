@@ -103,6 +103,11 @@ class ReportGenerator:
         <div class="domain-list">
             {all_subdomains}
         </div>
+
+        <h2>Vulnerabilities</h2>
+        <div class="vulnerability-list">
+            {vuln_details}
+        </div>
     </div>
 </body>
 </html>
@@ -145,7 +150,41 @@ class ReportGenerator:
             all_subdomains_html += f"<li>{subdomain}</li>"
         all_subdomains_html += "</ul>"
 
-        # Generate final HTML
+        # Format vulnerability details
+        vuln_details = []
+        for domain, vulns in data['details'].get('vulnerabilities', {}).items():
+            cves_html = ""
+            if vulns.get('cves'):
+                cves_html = "<div class='vuln-cves'><strong>CVEs:</strong><ul>"
+                for cve in vulns['cves']:
+                    cves_html += f"""
+                    <li>
+                        <strong>{cve['id']}</strong><br>
+                        Source: {cve['source']}<br>
+                        Details: {cve['details']}
+                    </li>
+                    """
+                cves_html += "</ul></div>"
+
+            findings_html = ""
+            if vulns.get('findings'):
+                findings_html = "<div class='vuln-findings'><strong>Other Findings:</strong><ul>"
+                for finding in vulns['findings']:
+                    findings_html += f"""
+                    <li>
+                        <strong>{finding['type']}</strong><br>
+                        Details: {finding['details']}
+                    </li>
+                    """
+                findings_html += "</ul></div>"
+
+            vuln_details.append(vuln_item_template.format(
+                domain=domain,
+                cves=cves_html,
+                findings=findings_html
+            ))
+
+        # Add vulnerability section to the report
         html_content = html_template.format(
             target=data['target'],
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -153,8 +192,37 @@ class ReportGenerator:
             alive_domains=data['summary']['alive_domains'],
             total_open_ports=data['summary']['total_open_ports'],
             domain_details="\n".join(domain_details),
-            all_subdomains=all_subdomains_html
+            all_subdomains=all_subdomains_html,
+            vuln_details="\n".join(vuln_details)
         )
+
+        # Add vulnerability-specific styling
+        html_content = html_content.replace("</style>", """
+            .vulnerability-list {
+                margin-top: 20px;
+            }
+            .vuln-item {
+                background-color: #fff3cd;
+                padding: 15px;
+                margin-bottom: 15px;
+                border-radius: 4px;
+            }
+            .vuln-cves {
+                color: #721c24;
+                background-color: #f8d7da;
+                padding: 10px;
+                margin: 10px 0;
+                border-radius: 4px;
+            }
+            .vuln-findings {
+                color: #856404;
+                background-color: #fff3cd;
+                padding: 10px;
+                margin: 10px 0;
+                border-radius: 4px;
+            }
+        </style>
+        """)
 
         # Write HTML file
         output_path = self.output_dir / f"{filename}.html"
