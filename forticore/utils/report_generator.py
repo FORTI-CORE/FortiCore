@@ -1,152 +1,194 @@
 import json
-from pathlib import Path
-from datetime import datetime
-import threading
-from typing import Dict, Any
-import csv
 import yaml
+import os
+from datetime import datetime
+from typing import Dict, Any
+from pathlib import Path
+from colorama import Fore, Style
 
 class ReportGenerator:
-    def __init__(self, output_dir, format="html"):
+    def __init__(self, output_dir: str):
         self.output_dir = Path(output_dir)
-        self.format = format.lower()
-        self.supported_formats = {
-            "html": self._generate_html,
-            "json": self._generate_json,
-            "csv": self._generate_csv,
-            "yaml": self._generate_yaml
-        }
-        self._lock = threading.Lock()  # Thread safety for concurrent report generation
-
-    def generate(self, data: Dict[str, Any], report_name: str = "report") -> Path:
-        """
-        Generate a report in the specified format.
-        Thread-safe method that can be called from multiple scanners simultaneously.
-        """
-        if self.format not in self.supported_formats:
-            raise ValueError(f"Unsupported format: {self.format}")
-
-        # Add metadata to the report
-        enriched_data = self._enrich_data(data)
-
-        with self._lock:
-            try:
-                return self.supported_formats[self.format](enriched_data, report_name)
-            except Exception as e:
-                # Fallback to JSON if the chosen format fails
-                print(f"Failed to generate {self.format} report. Falling back to JSON. Error: {e}")
-                return self._generate_json(enriched_data, f"{report_name}_fallback")
-
-    def _enrich_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Add metadata to the report data"""
-        return {
-            "metadata": {
-                "timestamp": datetime.now().isoformat(),
-                "report_format": self.format,
-                "tool_version": "1.0.0"  # You can make this dynamic
-            },
-            "scan_results": data
-        }
-
-    def _generate_html(self, data: Dict[str, Any], report_name: str) -> Path:
-        """Generate an HTML report with improved styling and structure"""
-        report_path = self.output_dir / f"{report_name}.html"
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         
+    def _create_html_report(self, data: Dict[str, Any], filename: str) -> str:
+        """Generate an HTML report with improved styling"""
         html_template = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>FortiCore Scan Report</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                .container { max-width: 1200px; margin: 0 auto; }
-                .metadata { background: #f5f5f5; padding: 10px; border-radius: 5px; }
-                .results { margin-top: 20px; }
-                .section { margin-bottom: 20px; }
-                .vulnerability { color: #d63031; }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { padding: 8px; text-align: left; border: 1px solid #ddd; }
-                th { background-color: #f5f5f5; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>FortiCore Scan Report</h1>
-                <div class="metadata">
-                    <h2>Metadata</h2>
-                    <table>
-                        <tr><th>Timestamp</th><td>{timestamp}</td></tr>
-                        <tr><th>Format</th><td>{format}</td></tr>
-                        <tr><th>Version</th><td>{version}</td></tr>
-                    </table>
-                </div>
-                <div class="results">
-                    <h2>Scan Results</h2>
-                    {results}
-                </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FortiCore Scan Report - {target}</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        h1, h2, h3 {{
+            color: #2c3e50;
+        }}
+        .summary {{
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }}
+        .domain-list {{
+            list-style: none;
+            padding: 0;
+        }}
+        .domain-item {{
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }}
+        .port-info {{
+            margin-left: 20px;
+            color: #666;
+        }}
+        .tech-info {{
+            margin-left: 20px;
+            color: #2980b9;
+        }}
+        .timestamp {{
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }}
+        .alert {{
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }}
+        .alert-success {{
+            background-color: #d4edda;
+            color: #155724;
+        }}
+        .alert-warning {{
+            background-color: #fff3cd;
+            color: #856404;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>FortiCore Scan Report</h1>
+        <div class="timestamp">Generated on: {timestamp}</div>
+        
+        <h2>Target Information</h2>
+        <div class="summary">
+            <p><strong>Target Domain:</strong> {target}</p>
+            <p><strong>Total Subdomains:</strong> {total_subdomains}</p>
+            <p><strong>Alive Domains:</strong> {alive_domains}</p>
+            <p><strong>Total Open Ports:</strong> {total_open_ports}</p>
+        </div>
+
+        <h2>Alive Domains and Services</h2>
+        <div class="domain-list">
+            {domain_details}
+        </div>
+
+        <h2>All Discovered Subdomains</h2>
+        <div class="domain-list">
+            {all_subdomains}
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+        domain_details_template = """
+            <div class="domain-item">
+                <h3>{domain}</h3>
+                {ports}
+                {technologies}
             </div>
-        </body>
-        </html>
         """
 
-        def dict_to_html(d, level=0):
-            if isinstance(d, dict):
-                result = "<table>"
-                for k, v in d.items():
-                    result += f"<tr><th>{k}</th><td>{dict_to_html(v, level+1)}</td></tr>"
-                result += "</table>"
-                return result
-            elif isinstance(d, (list, set)):
-                return "<ul>" + "".join(f"<li>{dict_to_html(i, level+1)}</li>" for i in d) + "</ul>"
-            else:
-                return str(d)
+        # Format domain details
+        domain_details = []
+        for domain in data['details']['alive_domains']:
+            ports_html = ""
+            if domain in data['details']['ports']:
+                ports_html = "<div class='port-info'><strong>Open Ports:</strong><ul>"
+                for port in data['details']['ports'][domain]:
+                    ports_html += f"<li>Port {port['port']}: {port['service']} ({port['version']})</li>"
+                ports_html += "</ul></div>"
 
-        with open(report_path, "w") as f:
-            metadata = data["metadata"]
-            results_html = dict_to_html(data["scan_results"])
-            
-            f.write(html_template.format(
-                timestamp=metadata["timestamp"],
-                format=metadata["report_format"],
-                version=metadata["tool_version"],
-                results=results_html
+            tech_html = ""
+            if domain in data['details']['technologies']:
+                tech_html = "<div class='tech-info'><strong>Technologies:</strong><ul>"
+                for tech in data['details']['technologies'][domain]:
+                    tech_html += f"<li>{tech['name']} {tech['version']} (Port {tech['port']})</li>"
+                tech_html += "</ul></div>"
+
+            domain_details.append(domain_details_template.format(
+                domain=domain,
+                ports=ports_html,
+                technologies=tech_html
             ))
 
-        return report_path
+        # Format all subdomains
+        all_subdomains_html = "<ul>"
+        for subdomain in data['details']['all_subdomains']:
+            all_subdomains_html += f"<li>{subdomain}</li>"
+        all_subdomains_html += "</ul>"
 
-    def _generate_json(self, data: Dict[str, Any], report_name: str) -> Path:
-        """Generate a JSON report with proper formatting"""
-        report_path = self.output_dir / f"{report_name}.json"
-        with open(report_path, "w") as f:
-            json.dump(data, f, indent=4, sort_keys=True)
-        return report_path
+        # Generate final HTML
+        html_content = html_template.format(
+            target=data['target'],
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            total_subdomains=data['summary']['total_subdomains'],
+            alive_domains=data['summary']['alive_domains'],
+            total_open_ports=data['summary']['total_open_ports'],
+            domain_details="\n".join(domain_details),
+            all_subdomains=all_subdomains_html
+        )
 
-    def _generate_csv(self, data: Dict[str, Any], report_name: str) -> Path:
-        """Generate a CSV report (flattened structure)"""
-        report_path = self.output_dir / f"{report_name}.csv"
-        
-        def flatten_dict(d, parent_key='', sep='_'):
-            items = []
-            for k, v in d.items():
-                new_key = f"{parent_key}{sep}{k}" if parent_key else k
-                if isinstance(v, dict):
-                    items.extend(flatten_dict(v, new_key, sep=sep).items())
-                else:
-                    items.append((new_key, v))
-            return dict(items)
+        # Write HTML file
+        output_path = self.output_dir / f"{filename}.html"
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
 
-        flattened_data = flatten_dict(data)
-        
-        with open(report_path, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(flattened_data.keys())
-            writer.writerow(flattened_data.values())
-            
-        return report_path
+        return str(output_path)
 
-    def _generate_yaml(self, data: Dict[str, Any], report_name: str) -> Path:
+    def _create_json_report(self, data: Dict[str, Any], filename: str) -> str:
+        """Generate a JSON report"""
+        output_path = self.output_dir / f"{filename}.json"
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4)
+        return str(output_path)
+
+    def _create_yaml_report(self, data: Dict[str, Any], filename: str) -> str:
         """Generate a YAML report"""
-        report_path = self.output_dir / f"{report_name}.yaml"
-        with open(report_path, 'w') as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-        return report_path
+        output_path = self.output_dir / f"{filename}.yaml"
+        with open(output_path, 'w', encoding='utf-8') as f:
+            yaml.dump(data, f, default_flow_style=False)
+        return str(output_path)
+
+    def generate_report(self, data: Dict[str, Any], filename: str, format: str = "html") -> str:
+        """Generate a report in the specified format"""
+        try:
+            if format.lower() == "html":
+                return self._create_html_report(data, filename)
+            elif format.lower() == "json":
+                return self._create_json_report(data, filename)
+            elif format.lower() == "yaml":
+                return self._create_yaml_report(data, filename)
+            else:
+                print(f"{Fore.YELLOW}Warning: Unsupported format '{format}'. Falling back to JSON.{Style.RESET_ALL}")
+                return self._create_json_report(data, f"{filename}_fallback")
+        except Exception as e:
+            print(f"{Fore.RED}Failed to generate {format} report. Falling back to JSON. Error: {e}{Style.RESET_ALL}")
+            return self._create_json_report(data, f"{filename}_fallback")
