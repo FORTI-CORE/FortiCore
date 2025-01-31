@@ -45,22 +45,22 @@ DEBIAN_FRONTEND=noninteractive apt install -y \
     john \
     medusa \
     ncrack \
-    netcat \
+    netcat-traditional \
     sqlmap \
     subfinder \
     amass
 
-# Create virtual environment
+# Create and activate virtual environment
 echo "Creating virtual environment..."
 python3 -m venv /opt/forticore
 source /opt/forticore/bin/activate
 
-# Install Python dependencies
+# Upgrade pip and install dependencies
 echo "Installing Python dependencies..."
-/opt/forticore/bin/pip install --upgrade pip
-/opt/forticore/bin/pip install colorama python-nmap concurrent-futures
+/opt/forticore/bin/pip install --upgrade pip wheel setuptools
+/opt/forticore/bin/pip install colorama python-nmap
 
-# Install the package
+# Install the package in development mode
 echo "Installing FortiCore..."
 cd "$(dirname "$0")"
 /opt/forticore/bin/pip install -e .
@@ -77,3 +77,8 @@ chmod +x /usr/local/bin/ftcore
 
 echo "FortiCore has been installed successfully!"
 echo "You can now run it by typing 'ftcore' in your terminal."
+
+# Verify installation
+echo "Verifying installation..."
+source /opt/forticore/bin/activate
+python3 -c "import colorama; import nmap; print('Dependencies verified successfully!')"
