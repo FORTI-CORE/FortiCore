@@ -11,7 +11,7 @@ def show_banner():
         print(f"{Style.RESET_ALL}")
         print(f"{Fore.BLUE}[*] A Comprehensive Penetration Testing Framework{Style.RESET_ALL}")
         print(f"{Fore.GREEN}[*] Version: 1.0.0{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}[*] Author: Your Name{Style.RESET_ALL}\n")
+        print(f"{Fore.YELLOW}[*] Author: Forticore{Style.RESET_ALL}\n")
     except:
         print("\nFortiCore - Penetration Testing Framework\n")
 
