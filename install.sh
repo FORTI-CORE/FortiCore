@@ -60,7 +60,11 @@ echo "Installing Python dependencies..."
 /opt/forticore/bin/pip install --upgrade pip wheel setuptools
 /opt/forticore/bin/pip install colorama python-nmap
 
-# Install the package in development mode
+# Install/upgrade all dependencies
+echo "Installing/upgrading dependencies..."
+pip install -r requirements.txt
+
+# Reinstall the package in development mode
 echo "Installing FortiCore..."
 cd "$(dirname "$0")"
 /opt/forticore/bin/pip install -e .

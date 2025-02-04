@@ -22,10 +22,16 @@ setup(
     install_requires=[
         "requests>=2.26.0",
         "python-dotenv>=0.19.0",
-        "pyyaml>=5.4.1",
-        "colorama>=0.4.4",
+        "questionary>=1.10.0",
+        "colorama>=0.4.6",
+        "aiohttp>=3.8.1",
+        "dnspython>=2.2.1",
+        "httpx>=0.23.0",
+        "pyyaml>=6.0",
+        "jinja2>=3.1.2",
+        "cvss>=2.5",
         "python-nmap>=0.7.1",
-        "pyfiglet",
+        "pyfiglet>=0.8.0"
     ],
     entry_points={
         "console_scripts": [
