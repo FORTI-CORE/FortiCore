@@ -59,6 +59,7 @@ class VulnerabilityScanner(BaseScanner):
     async def scan_target(self, target: str, interactive: bool = True) -> Dict[str, Any]:
         """Enhanced vulnerability scanning with multiple tools"""
         start_time = datetime.now()
+        print(f"\n{Fore.GREEN}[+] Starting vulnerability scan for {target}{Style.RESET_ALL}")
         
         scan_results = {
             'target': target,
@@ -72,41 +73,140 @@ class VulnerabilityScanner(BaseScanner):
             }
         }
         
-        # Run parallel vulnerability scans
-        async with asyncio.TaskGroup() as tg:
+        try:
+            # Run scans sequentially to avoid resource conflicts
             if self.scan_config['web_vulns']:
-                tg.create_task(self._run_web_scans(target, scan_results))
+                await self._run_web_scans(target, scan_results)
             if self.scan_config['cms_vulns']:
-                tg.create_task(self._run_cms_scans(target, scan_results))
+                await self._run_cms_scans(target, scan_results)
             if self.scan_config['ssl_vulns']:
-                tg.create_task(self._run_ssl_scans(target, scan_results))
-        
-        # Update summary counts
-        for vuln in scan_results['vulnerabilities']:
-            severity = vuln.get('severity', 'low').lower()
-            scan_results['summary'][severity] = scan_results['summary'].get(severity, 0) + 1
-        
-        # Generate report
-        await self._generate_reports(scan_results)
-        
+                await self._run_ssl_scans(target, scan_results)
+
+            # Update summary counts
+            for vuln in scan_results['vulnerabilities']:
+                severity = vuln.get('severity', 'low').lower()
+                scan_results['summary'][severity] = scan_results['summary'].get(severity, 0) + 1
+
+            # Generate report
+            await self._generate_reports(scan_results)
+            
+        except Exception as e:
+            self.logger.error(f"Error during vulnerability scan: {e}")
+            scan_results['error'] = str(e)
+            
         return scan_results
 
     async def _run_web_scans(self, target: str, results: Dict[str, Any]):
         """Enhanced web vulnerability scanning"""
-        csrf_ssrf_scanner = CSRFSSRFScanner(target)
-        
-        tasks = [
-            self.run_nuclei_scan(target),
-            self._run_sqlmap_scan(target),
-            self.run_xsstrike(target),
-            csrf_ssrf_scanner.scan_csrf(f"https://{target}"),
-            csrf_ssrf_scanner.scan_ssrf(f"https://{target}")
-        ]
-        
-        scan_results = await asyncio.gather(*tasks)
-        for result in scan_results:
-            if result:
-                results['vulnerabilities'].extend(result)
+        try:
+            # Run scans concurrently but with proper await
+            tasks = [
+                self.run_nuclei_scan(target),
+                self._run_sqlmap_scan(target),
+                self.run_xsstrike(target)
+            ]
+            
+            scan_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for result in scan_results:
+                if result and not isinstance(result, Exception):
+                    if isinstance(result, list):
+                        results['vulnerabilities'].extend(result)
+                    else:
+                        results['vulnerabilities'].append(result)
+                elif isinstance(result, Exception):
+                    self.logger.error(f"Scan error: {str(result)}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error in web scans: {e}")
+
+    async def _run_sqlmap_scan(self, target: str) -> List[Dict[str, Any]]:
+        """Run SQLMap scan with proper async handling"""
+        try:
+            output_file = self.output_dir / f"{target}_sqlmap.json"
+            cmd = [
+                "sqlmap",
+                "-u", f"https://{target}",
+                "--batch",
+                "--random-agent",
+                "--level", "2",
+                "--risk", "2",
+                "--threads", "4",
+                "--output-dir", str(self.output_dir),
+                "--json-output", str(output_file)
+            ]
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            await process.communicate()
+            
+            if output_file.exists():
+                with open(output_file) as f:
+                    data = json.load(f)
+                    return self._format_sqlmap_results(data)
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"SQLMap scan failed: {e}")
+            return []
+
+    async def run_nuclei_scan(self, target: str) -> List[Dict[str, Any]]:
+        """Run Nuclei scan with proper async handling"""
+        try:
+            cmd = [
+                "nuclei",
+                "-u", f"https://{target}",
+                "-severity", "critical,high",
+                "-json"
+            ]
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if stdout:
+                findings = json.loads(stdout)
+                return self._format_nuclei_results(findings)
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"Nuclei scan failed: {e}")
+            return []
+
+    def _format_sqlmap_results(self, data: Dict) -> List[Dict[str, Any]]:
+        """Format SQLMap results"""
+        formatted = []
+        if data.get('vulnerabilities'):
+            for vuln in data['vulnerabilities']:
+                formatted.append({
+                    'type': 'sql_injection',
+                    'severity': 'high',
+                    'name': vuln.get('name', 'SQL Injection'),
+                    'description': vuln.get('details', ''),
+                    'proof': vuln.get('payload', '')
+                })
+        return formatted
+
+    def _format_nuclei_results(self, findings: List[Dict]) -> List[Dict[str, Any]]:
+        """Format Nuclei results"""
+        formatted = []
+        for finding in findings:
+            formatted.append({
+                'type': finding.get('template-id', 'unknown'),
+                'severity': finding.get('severity', 'low'),
+                'name': finding.get('info', {}).get('name', 'Unknown'),
+                'description': finding.get('info', {}).get('description', ''),
+                'proof': finding.get('matched-at', '')
+            })
+        return formatted
 
     async def _run_cms_scans(self, target: str, results: Dict[str, Any]):
         """Run CMS-specific scans"""
@@ -154,26 +254,6 @@ class VulnerabilityScanner(BaseScanner):
         bar = '=' * filled_length + '-' * (bar_length - filled_length)
         print(f'\r{Fore.CYAN}[{bar}] {percentage:.1f}% - {scan_type}{Style.RESET_ALL}', end='')
 
-    async def run_nuclei_scan(self, domain: str) -> List[Dict[str, Any]]:
-        try:
-            cmd = [
-                "nuclei",
-                "-u", domain,
-                "-severity", "critical,high,medium",
-                "-json",
-                "-timeout", "5"
-            ]
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await process.communicate()
-            return [json.loads(line) for line in stdout.decode().splitlines() if line]
-        except Exception as e:
-            self.logger.error(f"Nuclei scan failed: {e}")
-            return []
-
     async def run_xsstrike(self, url: str) -> List[Dict[str, Any]]:
         try:
             cmd = ["xsstrike", "--url", url, "--json"]
@@ -185,30 +265,6 @@ class VulnerabilityScanner(BaseScanner):
             return json.loads(stdout.decode())
         except Exception as e:
             self.logger.error(f"XSStrike failed: {e}")
-            return []
-
-    def run_sqlmap(self, url: str) -> List[Dict[str, Any]]:
-        try:
-            output_file = self.output_dir / f"{self.target}_sqlmap.json"
-            cmd = [
-                "sqlmap",
-                "-u", url,
-                "--batch",
-                "--random-agent",
-                "--level", "2",
-                "--risk", "2",
-                "--threads", "4",
-                "--output-dir", str(self.output_dir),
-                "--json-output", str(output_file)
-            ]
-            subprocess.run(cmd, capture_output=True)
-            
-            if output_file.exists():
-                with open(output_file) as f:
-                    return json.load(f)
-            return []
-        except Exception as e:
-            self.logger.error(f"SQLMap failed: {e}")
             return []
 
     async def scan_domain(self, domain: str):

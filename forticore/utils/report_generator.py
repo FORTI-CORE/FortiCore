@@ -264,38 +264,49 @@ class ReportGenerator:
 
     async def generate_html(self, data: Dict[str, Any]) -> str:
         """Generate HTML report with vulnerability details"""
-        template = self._load_template('vulnerability_report.html')
-        
-        # Format vulnerability sections
-        vuln_sections = []
-        for severity in ['critical', 'high', 'medium', 'low']:
-            vulns = data['details']['vulnerabilities']['by_severity'][severity]
-            if vulns:
-                section = f"<h3 class='severity-{severity}'>{severity.upper()} Severity Findings</h3>"
-                section += "<ul class='vuln-list'>"
-                for vuln in vulns:
-                    section += self._format_vuln_entry(vuln)
-                section += "</ul>"
-                vuln_sections.append(section)
-        
-        # Add technology and service information
-        tech_section = self._format_technology_section(data['details'].get('technologies', {}))
-        service_section = self._format_service_section(data['details'].get('services', {}))
-        
-        # Generate final HTML
-        html_content = template.render(
-            target=data['target'],
-            scan_time=data['scan_time'],
-            summary=data['summary'],
-            vulnerability_sections="\n".join(vuln_sections),
-            technology_section=tech_section,
-            service_section=service_section
-        )
-        
-        # Save report
-        output_file = self.output_dir / f"vulnerability_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        output_file.write_text(html_content)
-        return str(output_file)
+        try:
+            template = self._load_template('vulnerability_report.html')
+            
+            # Format vulnerability sections
+            vuln_sections = []
+            vulnerabilities = data.get('details', {}).get('vulnerabilities', {})
+            
+            for severity in ['critical', 'high', 'medium', 'low']:
+                vulns = vulnerabilities.get('by_severity', {}).get(severity, [])
+                if vulns:
+                    section = f"<h3 class='severity-{severity}'>{severity.upper()} Severity Findings</h3>"
+                    section += "<ul class='vuln-list'>"
+                    for vuln in vulns:
+                        section += self._format_vuln_entry(vuln)
+                    section += "</ul>"
+                    vuln_sections.append(section)
+            
+            # Add technology and service information
+            tech_section = self._format_technology_section(
+                data.get('details', {}).get('technologies', {})
+            )
+            service_section = self._format_service_section(
+                data.get('details', {}).get('services', {})
+            )
+            
+            # Generate final HTML
+            html_content = template.render(
+                target=data.get('target', 'Unknown'),
+                scan_time=data.get('scan_time', datetime.now().isoformat()),
+                summary=data.get('summary', {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}),
+                vulnerability_sections="\n".join(vuln_sections) if vuln_sections else "No vulnerabilities found.",
+                technology_section=tech_section,
+                service_section=service_section
+            )
+            
+            # Save report
+            output_file = self.output_dir / f"vulnerability_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            output_file.write_text(html_content)
+            return str(output_file)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate HTML report: {e}")
+            return await self.generate_json(data)  # Fallback to JSON
         
     async def generate_json(self, data: Dict[str, Any]) -> str:
         """Generate JSON report"""
