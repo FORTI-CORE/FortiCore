@@ -1,152 +1,154 @@
-import json
-from pathlib import Path
+from typing import Dict, Any, List
 from datetime import datetime
-import threading
-from typing import Dict, Any
-import csv
+import json
 import yaml
+from pathlib import Path
+from jinja2 import Template
+import cvss
+from colorama import Fore, Style
 
 class ReportGenerator:
-    def __init__(self, output_dir, format="html"):
+    def __init__(self, output_dir: str):
         self.output_dir = Path(output_dir)
-        self.format = format.lower()
-        self.supported_formats = {
-            "html": self._generate_html,
-            "json": self._generate_json,
-            "csv": self._generate_csv,
-            "yaml": self._generate_yaml
-        }
-        self._lock = threading.Lock()  # Thread safety for concurrent report generation
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.vuln_templates = self._load_vulnerability_templates()
 
-    def generate(self, data: Dict[str, Any], report_name: str = "report") -> Path:
-        """
-        Generate a report in the specified format.
-        Thread-safe method that can be called from multiple scanners simultaneously.
-        """
-        if self.format not in self.supported_formats:
-            raise ValueError(f"Unsupported format: {self.format}")
-
-        # Add metadata to the report
-        enriched_data = self._enrich_data(data)
-
-        with self._lock:
-            try:
-                return self.supported_formats[self.format](enriched_data, report_name)
-            except Exception as e:
-                # Fallback to JSON if the chosen format fails
-                print(f"Failed to generate {self.format} report. Falling back to JSON. Error: {e}")
-                return self._generate_json(enriched_data, f"{report_name}_fallback")
-
-    def _enrich_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Add metadata to the report data"""
+    def _load_vulnerability_templates(self) -> Dict[str, str]:
+        """Load vulnerability description templates"""
         return {
-            "metadata": {
-                "timestamp": datetime.now().isoformat(),
-                "report_format": self.format,
-                "tool_version": "1.0.0"  # You can make this dynamic
-            },
-            "scan_results": data
+            'sql_injection': 'SQL Injection vulnerability allowing unauthorized database access',
+            'xss': 'Cross-Site Scripting vulnerability enabling client-side attacks',
+            'ssl_vuln': 'SSL/TLS vulnerability affecting secure communications',
+            'cms_vuln': 'Content Management System vulnerability',
+            'default': 'Security vulnerability detected'
         }
 
-    def _generate_html(self, data: Dict[str, Any], report_name: str) -> Path:
-        """Generate an HTML report with improved styling and structure"""
-        report_path = self.output_dir / f"{report_name}.html"
+    def _validate_scan_data(self, data: Dict[str, Any]) -> bool:
+        """Validate scan data structure"""
+        required_fields = {
+            'target': str,
+            'summary': dict,
+            'details': dict
+        }
         
-        html_template = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>FortiCore Scan Report</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                .container { max-width: 1200px; margin: 0 auto; }
-                .metadata { background: #f5f5f5; padding: 10px; border-radius: 5px; }
-                .results { margin-top: 20px; }
-                .section { margin-bottom: 20px; }
-                .vulnerability { color: #d63031; }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { padding: 8px; text-align: left; border: 1px solid #ddd; }
-                th { background-color: #f5f5f5; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>FortiCore Scan Report</h1>
-                <div class="metadata">
-                    <h2>Metadata</h2>
-                    <table>
-                        <tr><th>Timestamp</th><td>{timestamp}</td></tr>
-                        <tr><th>Format</th><td>{format}</td></tr>
-                        <tr><th>Version</th><td>{version}</td></tr>
-                    </table>
+        try:
+            for field, field_type in required_fields.items():
+                if field not in data:
+                    self.logger.error(f"Missing required field: {field}")
+                    return False
+                if not isinstance(data[field], field_type):
+                    self.logger.error(f"Invalid type for {field}")
+                    return False
+            return True
+        except Exception as e:
+            self.logger.error(f"Error validating scan data: {e}")
+            return False
+
+    def generate_report(self, data: Dict[str, Any], filename: str, format: str = "html") -> str:
+        """Generate scan report with validation"""
+        if not self._validate_scan_data(data):
+            raise ValueError("Invalid scan data structure")
+        
+        try:
+            if format == "html":
+                return self._create_html_report(data, filename)
+            elif format == "json":
+                return self._create_json_report(data, filename)
+            elif format == "yaml":
+                return self._create_yaml_report(data, filename)
+            else:
+                raise ValueError(f"Unsupported format: {format}")
+        except Exception as e:
+            self.logger.error(f"Error generating report: {e}")
+            raise
+
+    def _calculate_risk_score(self, vulnerability: Dict[str, Any]) -> float:
+        """Calculate CVSS-based risk score"""
+        try:
+            if 'cvss_vector' in vulnerability:
+                c = cvss.CVSS3(vulnerability['cvss_vector'])
+                return c.base_score
+            # Default scoring based on severity
+            severity_scores = {
+                'critical': 9.0,
+                'high': 7.0,
+                'medium': 5.0,
+                'low': 3.0,
+                'info': 1.0
+            }
+            return severity_scores.get(vulnerability.get('severity', 'info'), 1.0)
+        except:
+            return 1.0
+
+    def _format_vulnerability_details(self, vulns: List[Dict[str, Any]]) -> str:
+        """Format vulnerability details with severity indicators"""
+        details = []
+        for vuln in sorted(vulns, key=lambda x: self._calculate_risk_score(x), reverse=True):
+            severity = vuln.get('severity', 'info').upper()
+            details.append(f"""
+                <div class="vuln-item severity-{severity.lower()}">
+                    <h4>{vuln.get('type', 'Unknown Vulnerability')}</h4>
+                    <p><strong>Severity:</strong> {severity}</p>
+                    <p><strong>Description:</strong> {vuln.get('description', self.vuln_templates['default'])}</p>
+                    {'<p><strong>CVE:</strong> ' + vuln['cve'] + '</p>' if 'cve' in vuln else ''}
+                    {'<p><strong>CVSS Score:</strong> ' + str(self._calculate_risk_score(vuln)) + '</p>' if 'cvss_vector' in vuln else ''}
+                    <div class="vuln-details">{vuln.get('details', '')}</div>
                 </div>
-                <div class="results">
-                    <h2>Scan Results</h2>
-                    {results}
-                </div>
+            """)
+        return "\n".join(details)
+
+    def _create_html_report(self, data: Dict[str, Any], filename: str) -> str:
+        """Reference existing HTML template and update"""
+        startLine: 14
+        endLine: 225
+
+        # Add vulnerability section template
+        vuln_item_template = """
+        <div class="domain-section">
+            <h3>{domain}</h3>
+            <div class="vulnerability-container">
+                {cves}
+                {findings}
             </div>
-        </body>
-        </html>
+        </div>
         """
 
-        def dict_to_html(d, level=0):
-            if isinstance(d, dict):
-                result = "<table>"
-                for k, v in d.items():
-                    result += f"<tr><th>{k}</th><td>{dict_to_html(v, level+1)}</td></tr>"
-                result += "</table>"
-                return result
-            elif isinstance(d, (list, set)):
-                return "<ul>" + "".join(f"<li>{dict_to_html(i, level+1)}</li>" for i in d) + "</ul>"
-            else:
-                return str(d)
+        # Add enhanced styling for vulnerabilities
+        additional_styles = """
+            .severity-critical { background-color: #ff5252; color: white; }
+            .severity-high { background-color: #ff7f50; color: white; }
+            .severity-medium { background-color: #ffd700; }
+            .severity-low { background-color: #90ee90; }
+            .severity-info { background-color: #87ceeb; }
+            .vuln-item { margin: 10px 0; padding: 15px; border-radius: 5px; }
+            .vuln-details { margin-top: 10px; font-family: monospace; }
+            .stats-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+            .stat-box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        """
 
-        with open(report_path, "w") as f:
-            metadata = data["metadata"]
-            results_html = dict_to_html(data["scan_results"])
-            
-            f.write(html_template.format(
-                timestamp=metadata["timestamp"],
-                format=metadata["report_format"],
-                version=metadata["tool_version"],
-                results=results_html
-            ))
+        return self._write_report(filename, "html", html_content)
 
-        return report_path
-
-    def _generate_json(self, data: Dict[str, Any], report_name: str) -> Path:
-        """Generate a JSON report with proper formatting"""
-        report_path = self.output_dir / f"{report_name}.json"
-        with open(report_path, "w") as f:
-            json.dump(data, f, indent=4, sort_keys=True)
-        return report_path
-
-    def _generate_csv(self, data: Dict[str, Any], report_name: str) -> Path:
-        """Generate a CSV report (flattened structure)"""
-        report_path = self.output_dir / f"{report_name}.csv"
-        
-        def flatten_dict(d, parent_key='', sep='_'):
-            items = []
-            for k, v in d.items():
-                new_key = f"{parent_key}{sep}{k}" if parent_key else k
-                if isinstance(v, dict):
-                    items.extend(flatten_dict(v, new_key, sep=sep).items())
-                else:
-                    items.append((new_key, v))
-            return dict(items)
-
-        flattened_data = flatten_dict(data)
-        
-        with open(report_path, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(flattened_data.keys())
-            writer.writerow(flattened_data.values())
-            
-        return report_path
-
-    def _generate_yaml(self, data: Dict[str, Any], report_name: str) -> Path:
-        """Generate a YAML report"""
-        report_path = self.output_dir / f"{report_name}.yaml"
+    def _create_json_report(self, data: Dict[str, Any], filename: str) -> str:
+        """Generate JSON report"""
+        report_path = self.output_dir / f"{filename}.json"
         with open(report_path, 'w') as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-        return report_path
+            json.dump(data, f, indent=2)
+        return str(report_path)
+
+    def _create_yaml_report(self, data: Dict[str, Any], filename: str) -> str:
+        """Generate YAML report"""
+        report_path = self.output_dir / f"{filename}.yaml"
+        with open(report_path, 'w') as f:
+            yaml.dump(data, f, default_flow_style=False)
+        return str(report_path)
+
+    def _write_report(self, filename: str, extension: str, content: str) -> str:
+        """Write report to file"""
+        report_path = self.output_dir / f"{filename}.{extension}"
+        with open(report_path, 'w') as f:
+            f.write(content)
+        return str(report_path)
+
+...
+
+...

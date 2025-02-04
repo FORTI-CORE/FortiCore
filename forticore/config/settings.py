@@ -22,19 +22,27 @@ TOOLS = {
         "ncrack",
         "netcat",
         "sqlmap",
-        "zenmap"
+        "zenmap",
+        "sublist3r",
+        "assetfinder",
+        "httpx",
+        "httprobe",
+        "whatweb",
+        "nuclei",
+        "xsstrike",
+        "wafw00f"
     ],
     "optional": [
-        "nuclei",
-        "httpx",
         "massdns",
-        "gowitness"
+        "gowitness",
+        "wappalyzer-cli"
     ]
 }
 
 # Scanning configurations
-SCAN_TIMEOUT = 5  # seconds
-THREADS = 10
+SCAN_TIMEOUT = 300  # increased timeout for comprehensive scans
+MAX_THREADS = 20    # increased thread count
+RETRY_COUNT = 3     # number of retries for failed tools
 USER_AGENT = "FortiCore Scanner v1.0"
 
 # API Keys (move to environment variables in production)

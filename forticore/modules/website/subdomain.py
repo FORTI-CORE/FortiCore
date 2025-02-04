@@ -6,6 +6,9 @@ from typing import Set, Dict, Any
 from pathlib import Path
 from colorama import Fore, Style
 import nmap
+from .vulnscan import VulnerabilityScanner
+import asyncio
+import questionary
 
 class SubdomainScanner(BaseScanner):
     def __init__(self, target: str, report_format: str = "html"):
@@ -107,6 +110,45 @@ class SubdomainScanner(BaseScanner):
                                 })
         except Exception as e:
             self.print_status(f"Error scanning ports: {e}", "ERROR")
+
+    async def parallel_scan(self):
+        try:
+            parallel_scanner = ParallelScanner(self.target)
+            vuln_scanner = VulnerabilityScanner(self.target)
+            
+            # Phase 1: Parallel subdomain enumeration
+            self.print_status("Starting subdomain enumeration...")
+            self.subdomains = await parallel_scanner.enumerate_subdomains()
+            self.print_status(f"Found {len(self.subdomains)} subdomains", "SUCCESS")
+            
+            # Phase 2: Verify live hosts
+            self.print_status("Verifying live hosts...")
+            self.alive_domains = await parallel_scanner.verify_live_hosts(self.subdomains)
+            self.print_status(f"Found {len(self.alive_domains)} live domains", "SUCCESS")
+            
+            # Phase 3: Vulnerability scanning
+            total_domains = len(self.alive_domains)
+            for idx, domain in enumerate(self.alive_domains, 1):
+                self.print_status(f"Scanning domain {idx}/{total_domains}: {domain}")
+                try:
+                    scan_results = await vuln_scanner.scan_target(domain)
+                    self.vulnerabilities[domain] = scan_results['vulnerabilities']
+                    
+                    if idx < total_domains:
+                        should_continue = questionary.confirm(
+                            f"\nContinue to next domain? ({total_domains - idx} remaining)",
+                            default=True
+                        ).ask()
+                        if not should_continue:
+                            break
+                except Exception as e:
+                    self.print_status(f"Error scanning {domain}: {e}", "ERROR")
+                    continue
+                
+            return self.subdomains
+        except Exception as e:
+            self.print_status(f"Error during parallel scan: {e}", "ERROR")
+            return set()
 
     def run(self) -> Set[str]:
         self.print_status(f"Starting reconnaissance for {self.target}", "INFO")
