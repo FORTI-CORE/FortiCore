@@ -15,9 +15,10 @@ apt install -y python3 python3-pip python3-venv golang-go figlet
 # Install required pentesting tools
 apt install -y nmap dirb nikto dnsmap hashcat hydra john medusa ncrack netcat sqlmap subfinder amass
 
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate
+# Create and activate virtual environment in the current directory
+INSTALL_DIR="$(pwd)"
+python3 -m venv "$INSTALL_DIR/venv"
+source "$INSTALL_DIR/venv/bin/activate"
 
 # Install Python packages in virtual environment
 pip3 install -r requirements.txt
@@ -33,12 +34,12 @@ GO111MODULE=on go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfin
 # Add Go binaries to PATH
 echo 'export PATH=$PATH:/root/go/bin' >> ~/.bashrc
 
-# Create wrapper script for ftcore
-cat > /usr/local/bin/ftcore << 'EOF'
+# Create wrapper script for ftcore with absolute path to venv
+cat > /usr/local/bin/ftcore << EOF
 #!/bin/bash
-VENV_PATH="$(dirname $(dirname $(readlink -f $(which python3))))/FortiCore/venv"
-source "$VENV_PATH/bin/activate"
-python3 -m forticore "$@"
+VENV_PATH="$INSTALL_DIR/venv"
+source "\$VENV_PATH/bin/activate"
+python3 -m forticore "\$@"
 EOF
 
 # Make wrapper script executable
