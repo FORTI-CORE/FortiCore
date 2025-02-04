@@ -30,7 +30,8 @@ TOOLS = {
         "whatweb",
         "nuclei",
         "xsstrike",
-        "wafw00f"
+        "wafw00f",
+        "jinja2"
     ],
     "optional": [
         "massdns",
