@@ -36,7 +36,7 @@ echo 'export PATH=$PATH:/root/go/bin' >> ~/.bashrc
 # Create wrapper script for ftcore
 cat > /usr/local/bin/ftcore << 'EOF'
 #!/bin/bash
-VENV_PATH="$(dirname $(dirname $(readlink -f $0)))/venv"
+VENV_PATH="$(dirname $(dirname $(readlink -f $(which python3))))/FortiCore/venv"
 source "$VENV_PATH/bin/activate"
 python3 -m forticore "$@"
 EOF

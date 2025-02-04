@@ -43,6 +43,7 @@ TOOLS = {
 # Scanning configurations
 SCAN_TIMEOUT = 300  # increased timeout for comprehensive scans
 MAX_THREADS = 20    # increased thread count
+THREADS = 10        # default number of threads
 RETRY_COUNT = 3     # number of retries for failed tools
 USER_AGENT = "FortiCore Scanner v1.0"
 
