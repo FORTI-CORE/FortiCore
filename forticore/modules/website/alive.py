@@ -10,15 +10,15 @@ import subprocess
 
 class AliveHostScanner(BaseScanner):
     def __init__(self, target: str):
-        super().__init__(target, f"scans/{target}/alive")
+        super().__init__(target)
         self.timeout = 10
         self.ports = [80, 443, 21, 22, 8080, 8443]
         
     async def verify_hosts(self, domains: Set[str]) -> Dict[str, Dict]:
-        """Verify live hosts using multiple methods"""
+        """Enhanced live host verification"""
         results = {}
         
-        print(f"\n{Fore.CYAN}[*] Verifying live hosts...{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}[*] Verifying live hosts with multiple methods...{Style.RESET_ALL}")
         
         async with aiohttp.ClientSession() as session:
             tasks = []
@@ -108,7 +108,8 @@ class AliveHostScanner(BaseScanner):
             result = subprocess.run(
                 ['nmap', '-p-', '-T4', '--min-rate=1000', '-n', domain],
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=self.timeout
             )
             
             # Parse nmap output for open ports
@@ -117,6 +118,8 @@ class AliveHostScanner(BaseScanner):
                     port = int(line.split('/')[0])
                     open_ports.append(port)
                     
+        except subprocess.TimeoutExpired:
+            self.logger.warning(f"Port scan timed out for {domain}")
         except Exception as e:
             self.logger.error(f"Port scan failed for {domain}: {e}")
             

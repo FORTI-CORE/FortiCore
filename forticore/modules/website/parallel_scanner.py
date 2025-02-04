@@ -8,6 +8,7 @@ import json
 import threading
 from queue import Queue
 from .alive import AliveHostScanner
+import os
 
 class ParallelScanner(BaseScanner):
     def __init__(self, target: str, scan_profile: str = "normal"):
@@ -15,32 +16,47 @@ class ParallelScanner(BaseScanner):
         self.scan_profile = scan_profile
         self.results_queue = Queue()
         self.scan_status = {"running": True}
+        self.timeout = 300  # 5 minutes timeout
         
     async def run_tool_async(self, tool: str, args: list) -> Set[str]:
-        try:
-            process = await asyncio.create_subprocess_exec(
-                tool, *args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await process.communicate()
-            return set(stdout.decode().splitlines())
-        except Exception as e:
-            self.logger.error(f"Error running {tool}: {e}")
-            return set()
+        """Run a tool with fallback and retry logic"""
+        retries = 3
+        for attempt in range(retries):
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    tool, *args,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await process.communicate()
+                if process.returncode == 0:
+                    return set(stdout.decode().splitlines())
+                else:
+                    self.logger.warning(f"{tool} failed (attempt {attempt + 1}/{retries}): {stderr.decode()}")
+            except Exception as e:
+                self.logger.error(f"Error running {tool} (attempt {attempt + 1}/{retries}): {e}")
+                await asyncio.sleep(1)  # Wait before retry
+        return set()  # Return empty set if all attempts fail
 
     async def enumerate_subdomains(self) -> Set[str]:
+        """Enhanced subdomain enumeration using multiple tools in parallel"""
         tasks = [
             self.run_tool_async("subfinder", ["-d", self.target]),
             self.run_tool_async("amass", ["enum", "-passive", "-d", self.target]),
             self.run_tool_async("assetfinder", [self.target]),
             self.run_tool_async("sublist3r", ["-d", self.target, "-o", "temp_sublist3r.txt"])
         ]
-        results = await asyncio.gather(*tasks)
-        return set().union(*results)
+        
+        try:
+            results = await asyncio.gather(*tasks)
+            all_subdomains = set().union(*results)
+            return all_subdomains
+        except Exception as e:
+            self.logger.error(f"Error during subdomain enumeration: {e}")
+            return set()
 
     async def verify_live_hosts(self, subdomains: Set[str]) -> Set[str]:
-        """Enhanced live host verification"""
+        """Enhanced live host verification using multiple tools"""
         alive_scanner = AliveHostScanner(self.target)
         results = await alive_scanner.verify_hosts(subdomains)
         
@@ -50,9 +66,8 @@ class ParallelScanner(BaseScanner):
             if alive_scanner.is_domain_alive({domain: data})
         }
         
-        # Store detailed results for reporting
+        # Store detailed results
         self.host_details = results
-        
         return alive_domains
 
     async def detect_technologies(self, domain: str) -> Dict[str, Any]:
@@ -139,3 +154,13 @@ class ParallelScanner(BaseScanner):
                 self.results_queue.put(("nuclei", domain, findings))
         except Exception as e:
             self.logger.error(f"Nuclei scan failed: {e}") 
+
+    async def cleanup(self):
+        """Cleanup resources after scanning"""
+        try:
+            if hasattr(self, 'temp_files'):
+                for temp_file in self.temp_files:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+        except Exception as e:
+            self.logger.error(f"Cleanup failed: {e}") 

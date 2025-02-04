@@ -4,18 +4,22 @@ import subprocess
 import json
 from pathlib import Path
 from ...core.scanner import BaseScanner
+from ...utils.report_generator import ReportGenerator
 import httpx
 import re
 from concurrent.futures import ThreadPoolExecutor
 from colorama import Fore, Style
 import questionary
+from .csrf_ssrf_scanner import CSRFSSRFScanner
+from datetime import datetime
 
 class VulnerabilityScanner(BaseScanner):
     def __init__(self, target: str, scan_profile: str = "normal"):
         super().__init__(target, f"scans/{target}/vulnerabilities")
         self.scan_profile = scan_profile
-        self.findings: Dict[str, List[Dict[str, Any]]] = {}
+        self.findings = {}
         self.scan_config = self._get_scan_config()
+        self.report_generator = ReportGenerator(self.output_dir)
         
     def _get_scan_config(self) -> Dict[str, bool]:
         """Interactive configuration for vulnerability scanning"""
@@ -53,29 +57,20 @@ class VulnerabilityScanner(BaseScanner):
         return answers if answers else {q["name"]: q["default"] for q in questions}
 
     async def scan_target(self, target: str, interactive: bool = True) -> Dict[str, Any]:
-        """Main scanning function with interactive progress"""
-        print(f"\n{Fore.GREEN}[+] Starting vulnerability scan for {target}{Style.RESET_ALL}")
+        """Enhanced vulnerability scanning with multiple tools"""
+        start_time = datetime.now()
         
         scan_results = {
             'target': target,
+            'scan_time': start_time.isoformat(),
             'vulnerabilities': [],
-            'scan_time': None
+            'summary': {
+                'critical': 0,
+                'high': 0,
+                'medium': 0,
+                'low': 0
+            }
         }
-        
-        if self.scan_config['web_vulns']:
-            # Reference existing nuclei scan implementation
-            nuclei_results = await self.run_nuclei_scan(target)
-            if nuclei_results:
-                scan_results['vulnerabilities'].extend(nuclei_results)
-                
-            if interactive:
-                should_continue = questionary.confirm(
-                    "Nuclei scan complete. Continue with additional scans?",
-                    default=True
-                ).ask()
-                
-                if not should_continue:
-                    return scan_results
         
         # Run parallel vulnerability scans
         async with asyncio.TaskGroup() as tg:
@@ -86,19 +81,32 @@ class VulnerabilityScanner(BaseScanner):
             if self.scan_config['ssl_vulns']:
                 tg.create_task(self._run_ssl_scans(target, scan_results))
         
+        # Update summary counts
+        for vuln in scan_results['vulnerabilities']:
+            severity = vuln.get('severity', 'low').lower()
+            scan_results['summary'][severity] = scan_results['summary'].get(severity, 0) + 1
+        
+        # Generate report
+        await self._generate_reports(scan_results)
+        
         return scan_results
 
     async def _run_web_scans(self, target: str, results: Dict[str, Any]):
-        """Run web vulnerability scans"""
-        # Reference existing SQLMap implementation
-        sqlmap_results = await self._run_sqlmap_scan(target)
-        if sqlmap_results:
-            results['vulnerabilities'].extend(sqlmap_results)
-            
-        # Reference existing XSStrike implementation
-        xss_results = await self.run_xsstrike(target)
-        if xss_results:
-            results['vulnerabilities'].extend(xss_results)
+        """Enhanced web vulnerability scanning"""
+        csrf_ssrf_scanner = CSRFSSRFScanner(target)
+        
+        tasks = [
+            self.run_nuclei_scan(target),
+            self._run_sqlmap_scan(target),
+            self.run_xsstrike(target),
+            csrf_ssrf_scanner.scan_csrf(f"https://{target}"),
+            csrf_ssrf_scanner.scan_ssrf(f"https://{target}")
+        ]
+        
+        scan_results = await asyncio.gather(*tasks)
+        for result in scan_results:
+            if result:
+                results['vulnerabilities'].extend(result)
 
     async def _run_cms_scans(self, target: str, results: Dict[str, Any]):
         """Run CMS-specific scans"""
@@ -263,3 +271,53 @@ class VulnerabilityScanner(BaseScanner):
                 'references': finding.get('references', [])
             })
         return processed
+
+    async def _generate_reports(self, scan_results: Dict[str, Any]):
+        """Generate reports in multiple formats"""
+        report_data = {
+            'target': scan_results['target'],
+            'scan_time': scan_results['scan_time'],
+            'summary': scan_results['summary'],
+            'details': {
+                'vulnerabilities': self._format_vulnerabilities(scan_results['vulnerabilities']),
+                'technologies': self.findings.get('technologies', {}),
+                'services': self.findings.get('services', {})
+            }
+        }
+        
+        # Generate HTML report
+        html_report = await self.report_generator.generate_html(report_data)
+        
+        # Generate JSON report
+        json_report = await self.report_generator.generate_json(report_data)
+        
+        print(f"\n{Fore.GREEN}[+] Reports generated:{Style.RESET_ALL}")
+        print(f"    HTML: {html_report}")
+        print(f"    JSON: {json_report}")
+        
+    def _format_vulnerabilities(self, vulns: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Format vulnerabilities for reporting"""
+        formatted = {
+            'by_severity': {
+                'critical': [],
+                'high': [],
+                'medium': [],
+                'low': []
+            },
+            'by_type': {},
+            'total_count': len(vulns)
+        }
+        
+        for vuln in vulns:
+            severity = vuln.get('severity', 'low').lower()
+            vuln_type = vuln.get('type', 'unknown')
+            
+            # Add to severity-based classification
+            formatted['by_severity'][severity].append(vuln)
+            
+            # Add to type-based classification
+            if vuln_type not in formatted['by_type']:
+                formatted['by_type'][vuln_type] = []
+            formatted['by_type'][vuln_type].append(vuln)
+            
+        return formatted

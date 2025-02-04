@@ -10,6 +10,7 @@ class ReportGenerator:
     def __init__(self, output_dir: str):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.template_dir = Path(__file__).parent / 'templates'
         
     def _create_html_report(self, data: Dict[str, Any], filename: str) -> str:
         """Generate an HTML report with improved styling"""
@@ -260,3 +261,69 @@ class ReportGenerator:
         except Exception as e:
             print(f"{Fore.RED}Failed to generate {format} report. Falling back to JSON. Error: {e}{Style.RESET_ALL}")
             return self._create_json_report(data, f"{filename}_fallback")
+
+    async def generate_html(self, data: Dict[str, Any]) -> str:
+        """Generate HTML report with vulnerability details"""
+        template = self._load_template('vulnerability_report.html')
+        
+        # Format vulnerability sections
+        vuln_sections = []
+        for severity in ['critical', 'high', 'medium', 'low']:
+            vulns = data['details']['vulnerabilities']['by_severity'][severity]
+            if vulns:
+                section = f"<h3 class='severity-{severity}'>{severity.upper()} Severity Findings</h3>"
+                section += "<ul class='vuln-list'>"
+                for vuln in vulns:
+                    section += self._format_vuln_entry(vuln)
+                section += "</ul>"
+                vuln_sections.append(section)
+        
+        # Add technology and service information
+        tech_section = self._format_technology_section(data['details'].get('technologies', {}))
+        service_section = self._format_service_section(data['details'].get('services', {}))
+        
+        # Generate final HTML
+        html_content = template.render(
+            target=data['target'],
+            scan_time=data['scan_time'],
+            summary=data['summary'],
+            vulnerability_sections="\n".join(vuln_sections),
+            technology_section=tech_section,
+            service_section=service_section
+        )
+        
+        # Save report
+        output_file = self.output_dir / f"vulnerability_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        output_file.write_text(html_content)
+        return str(output_file)
+        
+    async def generate_json(self, data: Dict[str, Any]) -> str:
+        """Generate JSON report"""
+        output_file = self.output_dir / f"vulnerability_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(output_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        return str(output_file)
+        
+    def _format_vuln_entry(self, vuln: Dict[str, Any]) -> str:
+        """Format a single vulnerability entry"""
+        return f"""
+            <li class='vuln-item severity-{vuln.get("severity", "low")}'>
+                <h4>{vuln.get('name', 'Unknown Vulnerability')}</h4>
+                <p><strong>Type:</strong> {vuln.get('type', 'Unknown')}</p>
+                <p><strong>Description:</strong> {vuln.get('description', 'No description available')}</p>
+                {self._format_vuln_details(vuln)}
+            </li>
+        """
+        
+    def _format_vuln_details(self, vuln: Dict[str, Any]) -> str:
+        """Format additional vulnerability details"""
+        details = []
+        
+        if vuln.get('cve'):
+            details.append(f"<p><strong>CVE:</strong> {vuln['cve']}</p>")
+        if vuln.get('cvss_score'):
+            details.append(f"<p><strong>CVSS Score:</strong> {vuln['cvss_score']}</p>")
+        if vuln.get('proof'):
+            details.append(f"<p><strong>Proof of Concept:</strong> {vuln['proof']}</p>")
+        
+        return "\n".join(details)
