@@ -23,6 +23,9 @@ setup(
         "requests>=2.26.0",
         "python-dotenv>=0.19.0",
         "pyyaml>=5.4.1",
+        "colorama>=0.4.4",
+        "python-nmap>=0.7.1",
+        "pyfiglet",
     ],
     entry_points={
         "console_scripts": [
