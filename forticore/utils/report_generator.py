@@ -7,8 +7,13 @@ from pathlib import Path
 from colorama import Fore, Style
 
 class ReportGenerator:
-    def __init__(self, output_dir: str):
+    def __init__(self, output_dir: str = "scans"):
+        """
+        Initialize the ReportGenerator.
+        :param output_dir: Directory where reports will be saved. Default is "scans".
+        """
         self.output_dir = Path(output_dir)
+        # Create the output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
     def _create_html_report(self, data: Dict[str, Any], filename: str) -> str:
@@ -168,7 +173,6 @@ class ReportGenerator:
                 {findings}
             </div>
         """
-        
 
         # Format domain details
         domain_details = []
@@ -248,20 +252,6 @@ class ReportGenerator:
                 cves=cves_html,
                 findings=findings_html
             ))
-            
-        output_path = self.output_dir / f"{filename}.html"
-        print(f"Attempting to write report to: {output_path}")
-
-    # Write HTML file
-        try:
-            with open(output_path, 'w', encoding='utf-8') as f:
-               f.write(html_content)
-            print(f"Report successfully written to: {output_path}")
-        except Exception as e:
-           print(f"{Fore.RED}Failed to write report: {e}{Style.RESET_ALL}")
-           return ""
-
-   
 
         # Add all sections to the report
         html_content = html_template.format(
