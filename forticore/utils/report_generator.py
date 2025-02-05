@@ -168,6 +168,7 @@ class ReportGenerator:
                 {findings}
             </div>
         """
+        
 
         # Format domain details
         domain_details = []
@@ -247,6 +248,20 @@ class ReportGenerator:
                 cves=cves_html,
                 findings=findings_html
             ))
+            
+        output_path = self.output_dir / f"{filename}.html"
+        print(f"Attempting to write report to: {output_path}")
+
+    # Write HTML file
+        try:
+            with open(output_path, 'w', encoding='utf-8') as f:
+               f.write(html_content)
+            print(f"Report successfully written to: {output_path}")
+        except Exception as e:
+           print(f"{Fore.RED}Failed to write report: {e}{Style.RESET_ALL}")
+           return ""
+
+   
 
         # Add all sections to the report
         html_content = html_template.format(
