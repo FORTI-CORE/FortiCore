@@ -23,6 +23,11 @@ def __init__(self,target:str,report_format:str="html"):
 
 def run_sqlmap(target_url, additional_flags=None):
     try:
+        #generate detailed report
+        scan_results=self._prepare_scan_results()
+        report_path=self.report_generator.generate_report(scan_results,f"{self.target}_scan_report",format=self.report_format)
+        self.print_status(f"report generated:{report_path}","SUCCESS")
+        
         # Base SQLMap command
         command = ["sqlmap", "-u", target_url, "--batch", "--dbs"]
 
@@ -53,6 +58,7 @@ def run_sqlmap(target_url, additional_flags=None):
     except Exception as e:
         print(f"[!] An error occurred: {e}")
         return None
+   
 
 def extract_findings(output):
     """
