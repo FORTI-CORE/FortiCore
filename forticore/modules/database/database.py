@@ -1,7 +1,6 @@
 import subprocess
 import re
 import argparse
-import sys
 from urllib.parse import urlparse, parse_qs
 from typing import Set, Dict, Any
 from ...utils.report_generator import ReportGenerator
@@ -9,7 +8,6 @@ from ...utils.report_generator import ReportGenerator
 class DatabaseScanner:
     def __init__(self, target: str, report_format: str = "html"):
         output_dir = f"scans/{target}"
-        super().__init__()
         self.target = target
         self.output_dir = output_dir
         self.databases: Set[str] = set()
@@ -28,11 +26,6 @@ class DatabaseScanner:
 
     def run_sqlmap(self, additional_flags=None):
         try:
-            # Generate detailed report
-            scan_results = self._prepare_scan_results()
-            report_path = self.report_generator.generate_report(scan_results, f"{self.target}_scan_report", format=self.report_format)
-            print(f"Report generated: {report_path}")
-
             # Base SQLMap command
             command = ["sqlmap", "-u", self.target, "--batch", "--dbs"]
 
@@ -119,8 +112,26 @@ class DatabaseScanner:
             "dbms_type": self.detected_dbms if self.detected_dbms else "Unknown",
             "databases": sorted(list(self.all_databases)),
             "raw_output": self.raw_output,
-            "details": "Scan completed successfully"  # Ensure 'details' is present
+            "details": {
+                "status": "Scan completed successfully",
+                "vulnerabilities_tested": [
+                    "Error-Based SQL Injection",
+                    "Boolean-Based Blind SQL Injection",
+                    "Time-Based Blind SQL Injection",
+                    "Union-Based SQL Injection",
+                    "Stacked Queries SQL Injection",
+                    "Out-of-Band SQL Injection",
+                ]
+            }
         }
+
+    def generate_report(self):
+        """
+        Generate the report after the scan is complete.
+        """
+        scan_results = self._prepare_scan_results()
+        report_path = self.report_generator.generate_report(scan_results, f"{self.target}_scan_report", format=self.report_format)
+        print(f"Report generated: {report_path}")
 
 
 if __name__ == "__main__":
@@ -133,3 +144,4 @@ if __name__ == "__main__":
     output = scanner.run_sqlmap()
     if output:
         scanner.common_vulnerability_tests()
+        scanner.generate_report()
