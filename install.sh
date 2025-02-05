@@ -109,7 +109,18 @@ install_security_tools() {
         echo -e "\033[1;32m[+] Installing XSStrike...\033[0m"
         git clone https://github.com/s0md3v/XSStrike "$TOOL_INSTALL_DIR/XSStrike"
         pip install -r "$TOOL_INSTALL_DIR/XSStrike/requirements.txt"
-        ln -sf "$TOOL_INSTALL_DIR/XSStrike/xsstrike.py" /usr/local/bin/xsstrike
+        
+        # Create proper wrapper script
+        cat > /usr/local/bin/xsstrike << 'EOF'
+#!/usr/bin/env python3
+import sys
+from XSStrike.core import main
+
+if __name__ == "__main__":
+    sys.argv[0] = 'xsstrike'
+    main()
+EOF
+        chmod +x /usr/local/bin/xsstrike
     fi
     
     # Nuclei (user-space installation)

@@ -2,7 +2,7 @@ from ...core.scanner import BaseScanner
 import subprocess
 import requests
 import concurrent.futures
-from typing import Set, Dict, Any
+from typing import Set, Dict, Any, List
 from pathlib import Path
 from colorama import Fore, Style, init
 import nmap
@@ -11,6 +11,7 @@ from ...utils.report_generator import ReportGenerator
 from .vulnscan import VulnerabilityScanner
 import asyncio
 import re
+import shutil
 
 # Initialize colorama
 init()
@@ -29,13 +30,28 @@ class SubdomainScanner(BaseScanner):
         output_dir = f"scans/{target}"
         super().__init__(target, output_dir)
         self.subdomains: Set[str] = set()
-        self.alive_domains: list = []
+        self.alive_domains: List[str] = []
         self.vulnerabilities: Dict[str, Dict] = {}
         self.ports: Dict[str, list] = {}
         self.technologies: Dict[str, list] = {}
         self.report_format = report_format
         self.report_generator = ReportGenerator(output_dir)
+        
+        # Initialize vulnerability scanner with proper path checking
         self.vuln_scanner = VulnerabilityScanner(target)
+        self._verify_tools()
+
+    def _verify_tools(self):
+        """Verify required tools are installed"""
+        self.available_tools = {
+            'xsstrike': shutil.which('xsstrike') is not None,
+            'nuclei': shutil.which('nuclei') is not None,
+            'sqlmap': shutil.which('sqlmap') is not None
+        }
+        
+        for tool, available in self.available_tools.items():
+            if not available:
+                self.print_status(f"{tool} not found in PATH. Related scans will be skipped.", "WARNING")
 
     def print_status(self, message: str, status: str = "INFO"):
         colors = {
@@ -149,12 +165,20 @@ class SubdomainScanner(BaseScanner):
         self.print_status(f"Scanning vulnerabilities for {domain}...", "INFO")
         
         try:
-            scan_results = await self.vuln_scanner.scan_target(domain)
-            if scan_results:
-                self.vulnerabilities[domain] = scan_results
+            # Pass the available tools status to the vulnerability scanner
+            self.vuln_scanner.available_tools = self.available_tools
+            
+            # Configure scan profile based on user choices
+            scan_results = await self.vuln_scanner.scan_target(
+                domain,
+                interactive=False  # Bypass interactive prompts
+            )
+            
+            if scan_results and 'vulnerabilities' in scan_results:
+                self.vulnerabilities[domain] = scan_results['vulnerabilities']
                 
                 # Log critical and high vulnerabilities
-                for vuln in scan_results.get('vulnerabilities', []):
+                for vuln in scan_results['vulnerabilities']:
                     if vuln.get('severity', '').lower() in ['critical', 'high']:
                         self.print_status(
                             f"Found {vuln['severity']} vulnerability in {domain}: {vuln.get('name', 'Unknown')}",
@@ -217,14 +241,15 @@ class SubdomainScanner(BaseScanner):
             self.print_status(f"Error generating report: {e}", "ERROR")
 
     def _prepare_scan_results(self) -> Dict[str, Any]:
+        """Enhanced results preparation with tool availability"""
         return {
             "target": self.target,
             "summary": {
                 "total_subdomains": len(self.subdomains),
                 "alive_domains": len(self.alive_domains),
                 "total_open_ports": sum(len(ports) for ports in self.ports.values()),
-                "total_vulnerabilities": sum(len(vulns['cves']) + len(vulns['findings']) 
-                                          for vulns in self.vulnerabilities.values())
+                "total_vulnerabilities": sum(len(vulns) for vulns in self.vulnerabilities.values()),
+                "tools_used": [tool for tool, available in self.available_tools.items() if available]
             },
             "details": {
                 "all_subdomains": list(sorted(self.subdomains)),
