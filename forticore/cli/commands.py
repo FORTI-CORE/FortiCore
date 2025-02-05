@@ -73,17 +73,20 @@ class CommandHandler:
                 
         except Exception as e:
             print(f"\n{Fore.RED}[!] Error during scan: {e}{Style.RESET_ALL}")
-    def database_info(self, website:str=None, *args) -> None:
-        """Handle database scanning"""
-        if not website:
-            print(f"{Fore.RED}Error: Please provide a parametrized website (e.g., -d example.com?id=1){Style.RESET_ALL}")
-            return
-        try:
-            print(f"\n{Fore.BLUE}[*] Start scan for {website}{Style.RESET_ALL}\n")
-            database = DatabaseScanner(website)
-            databases=database.run_sqlmap()
-        except Exception as e:
-            print(f"\n{Fore.RED}[!] Error during scan: {e}{Style.RESET_ALL}")
+    def database_info(self, website: str = None, *args) -> None:
+      """Handle database scanning"""
+      if not website:
+         print(f"{Fore.RED}Error: Please provide a parameterized website (e.g., -d example.com?id=1){Style.RESET_ALL}")
+         return
+      try:
+         print(f"\n{Fore.BLUE}[*] Start scan for {website}{Style.RESET_ALL}\n")
+         database = DatabaseScanner(website)
+         databases = database.run_sqlmap(website)  # <-- Fix: Pass `website` as argument
+
+      except Exception as e:
+         print(f"\n{Fore.RED}[!] Error during scan: {e}{Style.RESET_ALL}")
+
+
           
     def show_version(self, *args) -> None:
         """Display version information"""

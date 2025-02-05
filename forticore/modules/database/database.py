@@ -31,9 +31,7 @@ class DatabaseScanner:
         try:
             # Generate detailed report
             scan_results = self._prepare_scan_results()
-            report_path = self.report_generator.generate_report(
-                scan_results, f"{self.target}_scan_report", format=self.report_format
-            )
+            report_path = self.report_generator.generate_report(scan_results, f"{self.target}_scan_report", format=self.report_format)
             print(f"Report generated: {report_path}")
 
             # Base SQLMap command
@@ -116,13 +114,13 @@ class DatabaseScanner:
 
     def _prepare_scan_results(self) -> Dict[str, Any]:
         return {
-            "target_url": self.target,
-            "report_format": self.report_format,
-            "dbms_type": self.detected_dbms if self.detected_dbms else "Unknown",
-            "databases": sorted(list(self.all_databases)),
-            "raw_output": self.raw_output,
-            "report_path": self.report_generator.generate_report() if self.report_format == "html" else None,
-        }
+           "target_url": self.target,
+           "report_format": self.report_format,
+           "dbms_type": self.detected_dbms,
+           "databases": sorted(list(self.all_databases)),
+           "raw_output": self.raw_output
+    }
+
 
 
 if __name__ == "__main__":
