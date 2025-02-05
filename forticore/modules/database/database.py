@@ -130,5 +130,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     scanner = DatabaseScanner(args.target_url, report_format=args.format)
-    scanner.run_sqlmap()
-    scanner.common_vulnerability_tests()
+    output = scanner.run_sqlmap()
+    if output:
+        scanner.common_vulnerability_tests()
