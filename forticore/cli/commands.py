@@ -22,7 +22,7 @@ class CommandHandler:
                 "func": self.website_info,
                 "help": "Scan a website (e.g., --url example.com)"
             },
-            "-d":{
+            "--d":{
                 "func":self.database_info,
                 "help":"Scan a parametrized website (e.g., -d example.com?id=1"
             },
