@@ -6,7 +6,6 @@ from urllib.parse import urlparse, parse_qs
 from typing import Set, Dict, Any
 from ...utils.report_generator import ReportGenerator
 
-
 class DatabaseScanner:
     def __init__(self, target: str, report_format: str = "html"):
         output_dir = f"scans/{target}"
@@ -45,17 +44,16 @@ class DatabaseScanner:
             if additional_flags:
                 command.extend(additional_flags.split())
 
-            # Run SQLMap
-            #result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            subprocess.run(["sqlmap", "-u", self.target, "--batch", "--dbs"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # Run SQLMap and capture the output
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-
-            # Capture output
-            output = result.stdout
+            # Check for errors
             if result.returncode != 0:
                 print(f"[!] Error running sqlmap: {result.stderr}")
                 return None
 
+            # Capture output
+            output = result.stdout
             self.raw_output = output  # Store raw output
             return output
 
@@ -115,16 +113,14 @@ class DatabaseScanner:
         print(f"[+] Databases found: {', '.join(self.all_databases) if self.all_databases else 'None found'}")
 
     def _prepare_scan_results(self) -> Dict[str, Any]:
-      return {
-         "target_url": self.target,
-         "report_format": self.report_format,
-         "dbms_type": self.detected_dbms if self.detected_dbms else "Unknown",
-         "databases": sorted(list(self.all_databases)),
-         "raw_output": self.raw_output,
-         "details": "Scan completed successfully"  # Ensure 'details' is present
-    }
-
-
+        return {
+            "target_url": self.target,
+            "report_format": self.report_format,
+            "dbms_type": self.detected_dbms if self.detected_dbms else "Unknown",
+            "databases": sorted(list(self.all_databases)),
+            "raw_output": self.raw_output,
+            "details": "Scan completed successfully"  # Ensure 'details' is present
+        }
 
 
 if __name__ == "__main__":
