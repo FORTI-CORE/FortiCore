@@ -256,9 +256,32 @@ class VulnerabilityScanner(BaseScanner):
 
     async def _run_cms_scans(self, target: str, results: Dict[str, Any]):
         """Run CMS-specific scans"""
-        # Reference WordPress scanning implementation from subdomain.py
-        startLine: 397
-        endLine: 414
+        try:
+            cmd = [
+                "wpscan",
+                "--url", f"https://{target}",
+                "--format", "json",
+                "--no-update"
+            ]
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, _ = await process.communicate()
+            if stdout:
+                try:
+                    findings = json.loads(stdout)
+                    results['vulnerabilities'].extend(
+                        self._format_wpscan_results(findings)
+                    )
+                except json.JSONDecodeError:
+                    self.logger.error("Failed to parse WPScan output")
+                
+        except Exception as e:
+            self.logger.error(f"CMS scan failed: {e}")
 
     async def _run_ssl_scans(self, target: str, results: Dict[str, Any]):
         """Run SSL/TLS vulnerability scans"""
@@ -304,12 +327,14 @@ class VulnerabilityScanner(BaseScanner):
         """Run XSStrike with proper error handling"""
         if not self.available_tools['xsstrike']:
             return []
-            
+        
         try:
+            output_file = self.output_dir / f"{target}_xsstrike.json"
             cmd = [
                 "xsstrike",
-                "--url", f"https://{target}",
-                "--json"
+                "-u", f"https://{target}",
+                "--json",
+                "--output", str(output_file)
             ]
             
             process = await asyncio.create_subprocess_exec(
@@ -318,14 +343,14 @@ class VulnerabilityScanner(BaseScanner):
                 stderr=asyncio.subprocess.PIPE
             )
             
-            stdout, stderr = await process.communicate()
+            await process.communicate()
             
-            if stdout:
+            if output_file.exists():
                 try:
-                    findings = json.loads(stdout)
-                    return self._format_xsstrike_results(findings)
+                    with open(output_file) as f:
+                        return json.load(f)
                 except json.JSONDecodeError:
-                    self.logger.error("Failed to parse XSStrike output")
+                    self.logger.error("Invalid XSStrike JSON output")
             return []
             
         except Exception as e:
@@ -442,3 +467,19 @@ class VulnerabilityScanner(BaseScanner):
             formatted['by_type'][vuln_type].append(vuln)
             
         return formatted
+    
+    def _update_summary_counts(self):
+        """Update summary counts based on findings"""
+        self.findings.setdefault('summary', {
+            'critical': 0,
+            'high': 0,
+            'medium': 0,
+            'low': 0
+        })
+        self.findings.setdefault('vulnerabilities', [])
+        
+        for vuln in self.findings['vulnerabilities']:
+            severity = vuln.get('severity', 'low').lower()
+            if severity in self.findings['summary']:
+                self.findings['summary'][severity] += 1
+

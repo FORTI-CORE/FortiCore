@@ -268,6 +268,7 @@ class ReportGenerator:
     async def generate_html(self, data: Dict[str, Any]) -> str:
         """Generate HTML report with vulnerability details"""
         try:
+            data.setdefault('cves', [])
             template = self._load_template('vulnerability_report.html')
             
             # Ensure all required keys exist with proper structure
