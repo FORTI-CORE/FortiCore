@@ -5,12 +5,15 @@ from datetime import datetime
 from typing import Dict, Any
 from pathlib import Path
 from colorama import Fore, Style
+from jinja2 import Template
+import logging
 
 class ReportGenerator:
     def __init__(self, output_dir: str):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.template_dir = Path(__file__).parent / 'templates'
+        self.logger = logging.getLogger(__name__)
         
     def _create_html_report(self, data: Dict[str, Any], filename: str) -> str:
         """Generate an HTML report with improved styling"""
@@ -267,36 +270,26 @@ class ReportGenerator:
         try:
             template = self._load_template('vulnerability_report.html')
             
-            # Format vulnerability sections
-            vuln_sections = []
-            vulnerabilities = data.get('details', {}).get('vulnerabilities', {})
-            
-            for severity in ['critical', 'high', 'medium', 'low']:
-                vulns = vulnerabilities.get('by_severity', {}).get(severity, [])
-                if vulns:
-                    section = f"<h3 class='severity-{severity}'>{severity.upper()} Severity Findings</h3>"
-                    section += "<ul class='vuln-list'>"
-                    for vuln in vulns:
-                        section += self._format_vuln_entry(vuln)
-                    section += "</ul>"
-                    vuln_sections.append(section)
-            
-            # Add technology and service information
-            tech_section = self._format_technology_section(
-                data.get('details', {}).get('technologies', {})
-            )
-            service_section = self._format_service_section(
-                data.get('details', {}).get('services', {})
-            )
+            # Ensure all required keys exist
+            data.setdefault('target', 'Unknown')
+            data.setdefault('scan_time', datetime.now().isoformat())
+            data.setdefault('summary', {'critical': 0, 'high': 0, 'medium': 0, 'low': 0})
+            data.setdefault('vulnerabilities', [])
+            data.setdefault('tools_used', [])
+            data.setdefault('cves', [])
+            data.setdefault('services', {})
+            data.setdefault('technologies', {})
             
             # Generate final HTML
             html_content = template.render(
-                target=data.get('target', 'Unknown'),
-                scan_time=data.get('scan_time', datetime.now().isoformat()),
-                summary=data.get('summary', {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}),
-                vulnerability_sections="\n".join(vuln_sections) if vuln_sections else "No vulnerabilities found.",
-                technology_section=tech_section,
-                service_section=service_section
+                target=data['target'],
+                scan_time=data['scan_time'],
+                summary=data['summary'],
+                vulnerabilities=data['vulnerabilities'],
+                tools_used=data['tools_used'],
+                cves=data['cves'],
+                services=data['services'],
+                technologies=data['technologies']
             )
             
             # Save report
@@ -307,14 +300,38 @@ class ReportGenerator:
         except Exception as e:
             self.logger.error(f"Failed to generate HTML report: {e}")
             return await self.generate_json(data)  # Fallback to JSON
-        
+
     async def generate_json(self, data: Dict[str, Any]) -> str:
         """Generate JSON report"""
-        output_file = self.output_dir / f"vulnerability_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(output_file, 'w') as f:
-            json.dump(data, f, indent=2)
-        return str(output_file)
-        
+        try:
+            output_file = self.output_dir / f"{data['target']}_scan_report_fallback.json"
+            with open(output_file, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+            return str(output_file)
+        except Exception as e:
+            self.logger.error(f"Failed to generate JSON report: {e}")
+            return ""
+
+    def _load_template(self, template_name: str) -> Template:
+        """Load a template file"""
+        try:
+            template_path = self.template_dir / template_name
+            if not template_path.exists():
+                raise FileNotFoundError(f"Template file not found: {template_name}")
+            return Template(template_path.read_text())
+        except Exception as e:
+            self.logger.error(f"Failed to load template {template_name}: {e}")
+            # Return a basic template as fallback
+            return Template("""
+                <html>
+                <body>
+                <h1>Scan Report for {{ target }}</h1>
+                <p>Scan Time: {{ scan_time }}</p>
+                <pre>{{ vulnerabilities | tojson(indent=2) }}</pre>
+                </body>
+                </html>
+            """)
+
     def _format_vuln_entry(self, vuln: Dict[str, Any]) -> str:
         """Format a single vulnerability entry"""
         return f"""

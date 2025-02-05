@@ -12,6 +12,7 @@ from colorama import Fore, Style
 import questionary
 from .csrf_ssrf_scanner import CSRFSSRFScanner
 from datetime import datetime
+import shutil
 
 class VulnerabilityScanner(BaseScanner):
     def __init__(self, target: str, scan_profile: str = "normal"):
@@ -20,7 +21,25 @@ class VulnerabilityScanner(BaseScanner):
         self.findings = {}
         self.scan_config = self._get_scan_config()
         self.report_generator = ReportGenerator(self.output_dir)
+        self.available_tools = self._check_available_tools()
         
+    def _check_available_tools(self) -> Dict[str, bool]:
+        """Check which security tools are available"""
+        tools = {
+            'nuclei': False,
+            'sqlmap': False,
+            'xsstrike': False,
+            'nmap': False
+        }
+        
+        for tool in tools.keys():
+            if shutil.which(tool):
+                tools[tool] = True
+            else:
+                self.logger.warning(f"{tool} not found in PATH. Related scans will be skipped.")
+        
+        return tools
+
     def _get_scan_config(self) -> Dict[str, bool]:
         """Interactive configuration for vulnerability scanning"""
         print(f"\n{Fore.CYAN}[*] Configuring Vulnerability Scan{Style.RESET_ALL}")
@@ -70,11 +89,14 @@ class VulnerabilityScanner(BaseScanner):
                 'high': 0,
                 'medium': 0,
                 'low': 0
-            }
+            },
+            'tools_used': [],
+            'cves': [],
+            'services': {},
+            'technologies': {}
         }
         
         try:
-            # Run scans sequentially to avoid resource conflicts
             if self.scan_config['web_vulns']:
                 await self._run_web_scans(target, scan_results)
             if self.scan_config['cms_vulns']:
@@ -87,25 +109,29 @@ class VulnerabilityScanner(BaseScanner):
                 severity = vuln.get('severity', 'low').lower()
                 scan_results['summary'][severity] = scan_results['summary'].get(severity, 0) + 1
 
-            # Generate report
-            await self._generate_reports(scan_results)
+            return scan_results
             
         except Exception as e:
             self.logger.error(f"Error during vulnerability scan: {e}")
             scan_results['error'] = str(e)
-            
-        return scan_results
+            return scan_results
 
     async def _run_web_scans(self, target: str, results: Dict[str, Any]):
         """Enhanced web vulnerability scanning"""
-        try:
-            # Run scans concurrently but with proper await
-            tasks = [
-                self.run_nuclei_scan(target),
-                self._run_sqlmap_scan(target),
-                self.run_xsstrike(target)
-            ]
+        tasks = []
+        
+        if self.available_tools['nuclei']:
+            tasks.append(self.run_nuclei_scan(target))
+        if self.available_tools['sqlmap']:
+            tasks.append(self._run_sqlmap_scan(target))
+        if self.available_tools['xsstrike']:
+            tasks.append(self.run_xsstrike(target))
             
+        if not tasks:
+            self.logger.warning("No vulnerability scanning tools available. Please install nuclei, sqlmap, or xsstrike.")
+            return
+            
+        try:
             scan_results = await asyncio.gather(*tasks, return_exceptions=True)
             
             for result in scan_results:
@@ -155,13 +181,17 @@ class VulnerabilityScanner(BaseScanner):
             return []
 
     async def run_nuclei_scan(self, target: str) -> List[Dict[str, Any]]:
-        """Run Nuclei scan with proper async handling"""
+        """Run Nuclei scan with proper error handling"""
+        if not self.available_tools['nuclei']:
+            return []
+            
         try:
             cmd = [
                 "nuclei",
                 "-u", f"https://{target}",
                 "-severity", "critical,high",
-                "-json"
+                "-json",
+                "-silent"
             ]
             
             process = await asyncio.create_subprocess_exec(
@@ -173,7 +203,14 @@ class VulnerabilityScanner(BaseScanner):
             stdout, stderr = await process.communicate()
             
             if stdout:
-                findings = json.loads(stdout)
+                findings = []
+                for line in stdout.decode().splitlines():
+                    try:
+                        if line.strip():
+                            finding = json.loads(line)
+                            findings.append(finding)
+                    except json.JSONDecodeError:
+                        continue
                 return self._format_nuclei_results(findings)
             return []
             
@@ -254,15 +291,34 @@ class VulnerabilityScanner(BaseScanner):
         bar = '=' * filled_length + '-' * (bar_length - filled_length)
         print(f'\r{Fore.CYAN}[{bar}] {percentage:.1f}% - {scan_type}{Style.RESET_ALL}', end='')
 
-    async def run_xsstrike(self, url: str) -> List[Dict[str, Any]]:
+    async def run_xsstrike(self, target: str) -> List[Dict[str, Any]]:
+        """Run XSStrike with proper error handling"""
+        if not self.available_tools['xsstrike']:
+            return []
+            
         try:
-            cmd = ["xsstrike", "--url", url, "--json"]
+            cmd = [
+                "xsstrike",
+                "--url", f"https://{target}",
+                "--json"
+            ]
+            
             process = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.PIPE
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            stdout, _ = await process.communicate()
-            return json.loads(stdout.decode())
+            
+            stdout, stderr = await process.communicate()
+            
+            if stdout:
+                try:
+                    findings = json.loads(stdout)
+                    return self._format_xsstrike_results(findings)
+                except json.JSONDecodeError:
+                    self.logger.error("Failed to parse XSStrike output")
+            return []
+            
         except Exception as e:
             self.logger.error(f"XSStrike failed: {e}")
             return []
