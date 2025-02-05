@@ -79,6 +79,35 @@ class ReportGenerator:
             background-color: #fff3cd;
             color: #856404;
         }}
+        .vulnerability-list {{
+            margin-top: 20px;
+        }}
+        .vuln-item {{
+            background-color: #fff3cd;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }}
+        .vuln-cves {{
+            color: #721c24;
+            background-color: #f8d7da;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }}
+        .vuln-findings {{
+            color: #856404;
+            background-color: #fff3cd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }}
+        .database-info {{
+            margin-top: 20px;
+        }}
+        .database-vulns {{
+            margin-left: 20px;
+        }}
     </style>
 </head>
 <body>
@@ -92,6 +121,7 @@ class ReportGenerator:
             <p><strong>Total Subdomains:</strong> {total_subdomains}</p>
             <p><strong>Alive Domains:</strong> {alive_domains}</p>
             <p><strong>Total Open Ports:</strong> {total_open_ports}</p>
+            <p><strong>Databases Found:</strong> {databases_found}</p>
         </div>
 
         <h2>Alive Domains and Services</h2>
@@ -102,6 +132,16 @@ class ReportGenerator:
         <h2>All Discovered Subdomains</h2>
         <div class="domain-list">
             {all_subdomains}
+        </div>
+
+        <h2>Database Information</h2>
+        <div class="database-info">
+            <p><strong>DBMS Type:</strong> {dbms_type}</p>
+            <p><strong>Databases Found:</strong> {databases_list}</p>
+            <h3>Database Vulnerabilities</h3>
+            <div class="database-vulns">
+                {database_vulns}
+            </div>
         </div>
 
         <h2>Vulnerabilities</h2>
@@ -118,6 +158,14 @@ class ReportGenerator:
                 <h3>{domain}</h3>
                 {ports}
                 {technologies}
+            </div>
+        """
+
+        vuln_item_template = """
+            <div class="vuln-item">
+                <strong>{domain}</strong><br>
+                {cves}
+                {findings}
             </div>
         """
 
@@ -149,6 +197,22 @@ class ReportGenerator:
         for subdomain in data['details']['all_subdomains']:
             all_subdomains_html += f"<li>{subdomain}</li>"
         all_subdomains_html += "</ul>"
+
+        # Format database information
+        dbms_type = data.get("database", {}).get("dbms_type", "Unknown")
+        databases = data.get("database", {}).get("databases", [])
+        databases_list = "<ul>" + "".join(f"<li>{db}</li>" for db in databases) + "</ul>"
+
+        # Format database vulnerabilities
+        database_vulns = []
+        for vuln in data.get("database", {}).get("vulnerabilities", []):
+            database_vulns.append(f"""
+                <div class="vuln-item">
+                    <strong>{vuln['type']}</strong> ({vuln['severity']})<br>
+                    Details: {vuln['details']}
+                </div>
+            """)
+        database_vulns = "".join(database_vulns)
 
         # Format vulnerability details
         vuln_details = []
@@ -184,45 +248,21 @@ class ReportGenerator:
                 findings=findings_html
             ))
 
-        # Add vulnerability section to the report
+        # Add all sections to the report
         html_content = html_template.format(
             target=data['target'],
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             total_subdomains=data['summary']['total_subdomains'],
             alive_domains=data['summary']['alive_domains'],
             total_open_ports=data['summary']['total_open_ports'],
+            databases_found=len(databases),
             domain_details="\n".join(domain_details),
             all_subdomains=all_subdomains_html,
+            dbms_type=dbms_type,
+            databases_list=databases_list,
+            database_vulns=database_vulns,
             vuln_details="\n".join(vuln_details)
         )
-
-        # Add vulnerability-specific styling
-        html_content = html_content.replace("</style>", """
-            .vulnerability-list {
-                margin-top: 20px;
-            }
-            .vuln-item {
-                background-color: #fff3cd;
-                padding: 15px;
-                margin-bottom: 15px;
-                border-radius: 4px;
-            }
-            .vuln-cves {
-                color: #721c24;
-                background-color: #f8d7da;
-                padding: 10px;
-                margin: 10px 0;
-                border-radius: 4px;
-            }
-            .vuln-findings {
-                color: #856404;
-                background-color: #fff3cd;
-                padding: 10px;
-                margin: 10px 0;
-                border-radius: 4px;
-            }
-        </style>
-        """)
 
         # Write HTML file
         output_path = self.output_dir / f"{filename}.html"

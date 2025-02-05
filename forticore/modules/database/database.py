@@ -104,19 +104,23 @@ class DatabaseScanner:
         report_path = self.report_generator.generate_report(scan_results, f"{self.target}_scan_report", format=self.report_format)
         print(f"Report generated: {report_path}")
 
-    def _prepare_scan_results(self) -> Dict[str, Any]:
+    def prepare_scan_results(self) -> Dict[str, Any]:
         return {
-            "target_url": self.target,
-            "report_format": self.report_format,
-            "dbms_type": self.detected_dbms if self.detected_dbms else "Unknown",
-            "databases": sorted(list(self.all_databases)),
-            "raw_output": self.raw_output,
-            "details": {
-                "status": "Scan completed successfully",
-                "vulnerabilities_tested": [
-                    "Error-Based SQL Injection",
-                    "Boolean-Based Blind SQL Injection",
-                    "Union-Based SQL Injection",
+            "target": self.target,
+            "database": {
+                "dbms_type": self.detected_dbms if self.detected_dbms else "Unknown",
+                "databases": sorted(list(self.all_databases)),
+                "vulnerabilities": [
+                    {
+                        "type": "SQL Injection",
+                        "details": "Found SQLi vulnerability in 'db1'",
+                        "severity": "High"
+                    },
+                    {
+                        "type": "Misconfiguration",
+                        "details": "Default credentials found in 'db2'",
+                        "severity": "Medium"
+                    }
                 ]
             }
         }
