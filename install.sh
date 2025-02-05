@@ -19,6 +19,34 @@ check_apt_locks() {
     fi
 }
 
+# Function to install XSStrike
+install_xsstrike() {
+    echo "Installing XSStrike..."
+    # Create tools directory if it doesn't exist
+    mkdir -p /opt/tools
+    cd /opt/tools
+    
+    # Clone XSStrike repository
+    if [ -d "XSStrike" ]; then
+        echo "Updating existing XSStrike installation..."
+        cd XSStrike
+        git pull
+    else
+        echo "Cloning XSStrike repository..."
+        git clone https://github.com/s0md3v/XSStrike.git
+        cd XSStrike
+    fi
+    
+    # Install XSStrike requirements
+    /opt/forticore/bin/pip install -r requirements.txt
+    
+    # Create symbolic link
+    ln -sf /opt/tools/XSStrike/xsstrike.py /usr/local/bin/xsstrike
+    chmod +x /usr/local/bin/xsstrike
+    
+    echo "XSStrike installation completed!"
+}
+
 # Main installation process
 echo "Starting FortiCore installation..."
 
@@ -48,7 +76,9 @@ DEBIAN_FRONTEND=noninteractive apt install -y \
     netcat-traditional \
     sqlmap \
     subfinder \
-    amass
+    amass \
+    git \
+    python3-dev
 
 # Create and activate virtual environment
 echo "Creating virtual environment..."
@@ -63,6 +93,9 @@ echo "Installing Python dependencies..."
 # Install/upgrade all dependencies
 echo "Installing/upgrading dependencies..."
 pip install -r requirements.txt
+
+# Install XSStrike
+install_xsstrike
 
 # Reinstall the package in development mode
 echo "Installing FortiCore..."
@@ -86,3 +119,10 @@ echo "You can now run it by typing 'ftcore' in your terminal."
 echo "Verifying installation..."
 source /opt/forticore/bin/activate
 python3 -c "import colorama; import nmap; print('Dependencies verified successfully!')"
+
+# Verify XSStrike installation
+if [ -f "/usr/local/bin/xsstrike" ]; then
+    echo "XSStrike installation verified successfully!"
+else
+    echo "Warning: XSStrike installation could not be verified. Please check the installation manually."
+fi

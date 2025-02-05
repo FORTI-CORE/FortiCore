@@ -270,27 +270,20 @@ class ReportGenerator:
         try:
             template = self._load_template('vulnerability_report.html')
             
-            # Ensure all required keys exist
-            data.setdefault('target', 'Unknown')
-            data.setdefault('scan_time', datetime.now().isoformat())
-            data.setdefault('summary', {'critical': 0, 'high': 0, 'medium': 0, 'low': 0})
-            data.setdefault('vulnerabilities', [])
-            data.setdefault('tools_used', [])
-            data.setdefault('cves', [])
-            data.setdefault('services', {})
-            data.setdefault('technologies', {})
+            # Ensure all required keys exist with proper structure
+            report_data = {
+                'target': data.get('target', 'Unknown'),
+                'scan_time': data.get('scan_time', datetime.now().isoformat()),
+                'summary': data.get('summary', {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}),
+                'vulnerabilities': data.get('vulnerabilities', []),
+                'technologies': data.get('technologies', {}),
+                'services': data.get('services', {}),
+                'tools_used': data.get('tools_used', []),
+                'scan_config': data.get('scan_config', {})
+            }
             
             # Generate final HTML
-            html_content = template.render(
-                target=data['target'],
-                scan_time=data['scan_time'],
-                summary=data['summary'],
-                vulnerabilities=data['vulnerabilities'],
-                tools_used=data['tools_used'],
-                cves=data['cves'],
-                services=data['services'],
-                technologies=data['technologies']
-            )
+            html_content = template.render(**report_data)
             
             # Save report
             output_file = self.output_dir / f"vulnerability_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"

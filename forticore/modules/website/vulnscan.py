@@ -80,41 +80,50 @@ class VulnerabilityScanner(BaseScanner):
         start_time = datetime.now()
         print(f"\n{Fore.GREEN}[+] Starting vulnerability scan for {target}{Style.RESET_ALL}")
         
-        scan_results = {
-            'target': target,
-            'scan_time': start_time.isoformat(),
-            'vulnerabilities': [],
-            'summary': {
-                'critical': 0,
-                'high': 0,
-                'medium': 0,
-                'low': 0
-            },
-            'tools_used': [],
-            'cves': [],
-            'services': {},
-            'technologies': {}
-        }
-        
         try:
             if self.scan_config['web_vulns']:
-                await self._run_web_scans(target, scan_results)
+                await self._run_web_scans(target, self.findings)
             if self.scan_config['cms_vulns']:
-                await self._run_cms_scans(target, scan_results)
+                await self._run_cms_scans(target, self.findings)
             if self.scan_config['ssl_vulns']:
-                await self._run_ssl_scans(target, scan_results)
+                await self._run_ssl_scans(target, self.findings)
 
             # Update summary counts
-            for vuln in scan_results['vulnerabilities']:
-                severity = vuln.get('severity', 'low').lower()
-                scan_results['summary'][severity] = scan_results['summary'].get(severity, 0) + 1
+            self._update_summary_counts()
 
-            return scan_results
+            # Prepare final report data
+            report_data = {
+                'target': target,
+                'scan_time': start_time.isoformat(),
+                'summary': self.findings['summary'],
+                'vulnerabilities': self.findings['vulnerabilities'],
+                'technologies': self.findings.get('technologies', {}),
+                'services': self.findings.get('services', {}),
+                'tools_used': [tool for tool, available in self.available_tools.items() if available],
+                'scan_config': self.scan_config
+            }
+
+            # Generate report
+            try:
+                report_path = await self.report_generator.generate_html(report_data)
+                print(f"\n{Fore.GREEN}[+] Report generated: {report_path}{Style.RESET_ALL}")
+            except Exception as e:
+                self.logger.error(f"Error generating report: {e}")
+                # Fallback to JSON report
+                report_path = await self.report_generator.generate_json(report_data)
+                print(f"\n{Fore.YELLOW}[!] Fallback JSON report generated: {report_path}{Style.RESET_ALL}")
+
+            return report_data
             
         except Exception as e:
             self.logger.error(f"Error during vulnerability scan: {e}")
-            scan_results['error'] = str(e)
-            return scan_results
+            return {
+                'target': target,
+                'scan_time': start_time.isoformat(),
+                'error': str(e),
+                'summary': self.findings.get('summary', {}),
+                'vulnerabilities': self.findings.get('vulnerabilities', [])
+            }
 
     async def _run_web_scans(self, target: str, results: Dict[str, Any]):
         """Enhanced web vulnerability scanning"""
