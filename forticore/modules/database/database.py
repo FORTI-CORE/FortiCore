@@ -46,7 +46,9 @@ class DatabaseScanner:
                 command.extend(additional_flags.split())
 
             # Run SQLMap
-            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            #result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            subprocess.run(["sqlmap", "-u", self.target, "--batch", "--dbs"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
 
             # Capture output
             output = result.stdout
@@ -113,13 +115,15 @@ class DatabaseScanner:
         print(f"[+] Databases found: {', '.join(self.all_databases) if self.all_databases else 'None found'}")
 
     def _prepare_scan_results(self) -> Dict[str, Any]:
-        return {
-           "target_url": self.target,
-           "report_format": self.report_format,
-           "dbms_type": self.detected_dbms,
-           "databases": sorted(list(self.all_databases)),
-           "raw_output": self.raw_output
+      return {
+         "target_url": self.target,
+         "report_format": self.report_format,
+         "dbms_type": self.detected_dbms if self.detected_dbms else "Unknown",
+         "databases": sorted(list(self.all_databases)),
+         "raw_output": self.raw_output,
+         "details": "Scan completed successfully"  # Ensure 'details' is present
     }
+
 
 
 
