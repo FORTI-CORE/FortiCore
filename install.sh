@@ -1,182 +1,172 @@
 #!/bin/bash
-# FortiCore Safe Installation Script
-# Maintains system stability while adding new components
+# FortiCore Complete Installation Script
+# Version 2.0 - System-wide Installation
 
-# Configuration - Adjust these based on your needs
-FORTICORE_DIR="/opt/forticore"
-VENV_PATH="$FORTICORE_DIR/venv"
+# Configuration
+INSTALL_DIR="/opt/forticore"
+VENV_DIR="$INSTALL_DIR/venv"
 BIN_LINK="/usr/local/bin/ftcore"
-TOOL_INSTALL_DIR="$FORTICORE_DIR/tools"
+TOOLS_DIR="$INSTALL_DIR/tools"
+REQUIREMENTS="requirements.txt"
 
-# Exit on error and prevent partial installations
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+# Error handling
 set -euo pipefail
+trap 'echo -e "${RED}[!] Installation failed. Cleaning up...${NC}"; rm -rf "$INSTALL_DIR"; exit 1' ERR
 
-# Check root privileges
+# Check root
 if [ "$(id -u)" -ne 0 ]; then
-    echo -e "\033[1;31m[!] Please run as root\033[0m" >&2
+    echo -e "${RED}[!] Please run as root${NC}" >&2
     exit 1
 fi
 
-# Cleanup function for failed installations
+# Clean previous installation
 cleanup() {
-    echo -e "\n\033[1;33m[!] Installation failed. Performing cleanup...\033[0m"
-    rm -rf "$FORTICORE_DIR" || true
-    exit 1
-}
-trap cleanup ERR INT TERM
-
-# Check existing installations
-check_existing() {
-    echo -e "\033[1;34m[i] Checking system compatibility...\033[0m"
-    
-    # Check conflicting files
-    local conflict_files=(
-        "$BIN_LINK"
-        "/usr/local/bin/xsstrike"
-        "/usr/local/bin/nuclei"
-    )
-    
-    for file in "${conflict_files[@]}"; do
-        if [ -f "$file" ]; then
-            echo -e "\033[1;31m[!] Conflict found: $file exists!\033[0m" >&2
-            echo -e "\033[1;33m[?] Choose: (1) Backup and replace, (2) Skip installation, (3) Abort\033[0m"
-            read -r choice
-            case $choice in
-                1) mv "$file" "${file}.bak-$(date +%s)" ;;
-                2) echo -e "\033[1;33m[i] Skipping $file installation...\033[0m"; return 1 ;;
-                3) exit 1 ;;
-                *) echo -e "\033[1;31m[!] Invalid choice. Aborting.\033[0m"; exit 1 ;;
-            esac
-        fi
-    done
+    echo -e "${YELLOW}[!] Removing previous installation...${NC}"
+    rm -rf "$INSTALL_DIR"
+    rm -f "$BIN_LINK"
 }
 
-# Install system dependencies safely
+# Verify Python version
+verify_python() {
+    echo -e "${GREEN}[+] Verifying Python installation...${NC}"
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}[!] Python 3 not found!${NC}"
+        exit 1
+    fi
+    python3 -m venv --help >/dev/null 2>&1 || {
+        echo -e "${RED}[!] python3-venv package required${NC}"
+        exit 1
+    }
+}
+
+# Install system dependencies
 install_dependencies() {
-    echo -e "\033[1;34m[i] Installing system dependencies...\033[0m"
-    
-    # Essential packages
+    echo -e "${GREEN}[+] Installing system dependencies...${NC}"
     apt-get update && apt-get install -y \
         python3 \
         python3-venv \
         python3-dev \
+        python3-pip \
         git \
+        nmap \
+        sqlmap \
+        golang \
+        ruby \
+        gem \
+        build-essential \
         libssl-dev \
         libffi-dev \
-        nmap \
-        sqlmap
-    
-    # Optional tools (install only if missing)
-    command -v go >/dev/null || apt-get install -y golang
-    command -v gem >/dev/null || apt-get install -y ruby-full
+        libxml2-dev \
+        libxslt-dev
 }
 
-# Install FortiCore components
-install_forticore() {
-    echo -e "\033[1;34m[i] Setting up FortiCore environment...\033[0m"
-    
-    # Create directory structure
-    mkdir -p "$FORTICORE_DIR" "$TOOL_INSTALL_DIR"
-    chmod 755 "$FORTICORE_DIR"
-    
-    # Python virtual environment
-    python3 -m venv "$VENV_PATH"
-    source "$VENV_PATH/bin/activate"
-    
-    # Install Python requirements
+# Setup virtual environment
+setup_venv() {
+    echo -e "${GREEN}[+] Setting up Python virtual environment...${NC}"
+    python3 -m venv "$VENV_DIR"
+    source "$VENV_DIR/bin/activate"
     pip install --upgrade pip wheel setuptools
-    pip install -r requirements.txt
+}
+
+# Install Python requirements
+install_requirements() {
+    echo -e "${GREEN}[+] Installing Python requirements...${NC}"
+    if [ -f "$REQUIREMENTS" ]; then
+        pip install -r "$REQUIREMENTS"
+    else
+        pip install \
+            colorama \
+            python-nmap \
+            requests \
+            questionary \
+            httpx \
+            jinja2 \
+            pyyaml \
+            aiohttp \
+            dnspython
+    fi
+}
+
+# Install security tools
+install_tools() {
+    echo -e "${GREEN}[+] Installing security tools...${NC}"
+    mkdir -p "$TOOLS_DIR"
     
-    # Install tools in isolated directory
-    install_security_tools
+    # XSStrike
+    echo -e "${YELLOW}[*] Installing XSStrike...${NC}"
+    if [ -d "$TOOLS_DIR/XSStrike" ]; then
+        git -C "$TOOLS_DIR/XSStrike" pull
+    else
+        git clone https://github.com/s0md3v/XSStrike "$TOOLS_DIR/XSStrike"
+    fi
+    pip install -r "$TOOLS_DIR/XSStrike/requirements.txt"
+    ln -sf "$TOOLS_DIR/XSStrike/xsstrike.py" /usr/local/bin/xsstrike
     
-    # Create launcher script
-    echo -e "\033[1;34m[i] Creating FortiCore launcher...\033[0m"
+    # Nuclei
+    echo -e "${YELLOW}[*] Installing Nuclei...${NC}"
+    go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
+    ln -sf ~/go/bin/nuclei /usr/local/bin/nuclei
+    
+    # Subfinder
+    echo -e "${YELLOW}[*] Installing Subfinder...${NC}"
+    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+    ln -sf ~/go/bin/subfinder /usr/local/bin/subfinder
+}
+
+# Install FortiCore package
+install_forticore() {
+    echo -e "${GREEN}[+] Installing FortiCore...${NC}"
+    if [ -f "setup.py" ]; then
+        pip install -e .
+    else
+        echo -e "${YELLOW}[!] setup.py not found, installing as module${NC}"
+        mkdir -p "$INSTALL_DIR/src"
+        cp -r . "$INSTALL_DIR/src/"
+        pip install "$INSTALL_DIR/src"
+    fi
+}
+
+# Create launcher
+create_launcher() {
+    echo -e "${GREEN}[+] Creating system launcher...${NC}"
     cat > "$BIN_LINK" << EOF
 #!/bin/bash
-source "$VENV_PATH/bin/activate"
-python -m forticore "$@"
+source "$VENV_DIR/bin/activate"
+python -m forticore "\$@"
 EOF
-    chmod 755 "$BIN_LINK"
     chmod +x "$BIN_LINK"
 }
 
-# Security tools installation with version control
-install_security_tools() {
-    echo -e "\033[1;34m[i] Installing security tools...\033[0m"
-    
-    # XSStrike
-    if ! command -v xsstrike >/dev/null; then
-        echo -e "\033[1;32m[+] Installing XSStrike...\033[0m"
-        git clone https://github.com/s0md3v/XSStrike "$TOOL_INSTALL_DIR/XSStrike"
-        pip install -r "$TOOL_INSTALL_DIR/XSStrike/requirements.txt"
-        
-        # Create proper wrapper script
-        cat > /usr/local/bin/xsstrike << 'EOF'
-#!/usr/bin/env python3
-import sys
-from XSStrike.core import main
-
-if __name__ == "__main__":
-    sys.argv[0] = 'xsstrike'
-    main()
-EOF
-        chmod +x /usr/local/bin/xsstrike
-    fi
-    
-    # Nuclei (user-space installation)
-    if ! command -v nuclei >/dev/null; then
-        echo -e "\033[1;32m[+] Installing Nuclei...\033[0m"
-        go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
-        ln -sf ~/go/bin/nuclei /usr/local/bin/nuclei
-    fi
-    
-    # Subfinder (user-space installation)
-    if ! command -v subfinder >/dev/null; then
-        echo -e "\033[1;32m[+] Installing Subfinder...\033[0m"
-        go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-        ln -sf ~/go/bin/subfinder /usr/local/bin/subfinder
-    fi
-}
-
-# Post-installation checks
+# Verify installation
 verify_installation() {
-    echo -e "\n\033[1;34m[i] Verifying installation...\033[0m"
-    
-    local success=0
-    declare -A tools=(
-        ["ftcore"]="FortiCore main script"
-        ["xsstrike"]="XSStrike vulnerability scanner"
-        ["nuclei"]="Nuclei template scanner"
-        ["subfinder"]="Subdomain discovery tool"
-    )
-    
-    for tool in "${!tools[@]}"; do
-        if command -v "$tool" >/dev/null; then
-            echo -e "\033[1;32m[✓] ${tools[$tool]} installed\033[0m"
-            ((success++))
-        else
-            echo -e "\033[1;31m[✗] ${tools[$tool]} missing\033[0m" >&2
-        fi
-    done
-    
-    if [ $success -ne ${#tools[@]} ]; then
-        echo -e "\n\033[1;31m[!] Some components failed to install!\033[0m" >&2
-        echo -e "\033[1;33m[i] Try manual installation for missing components\033[0m"
+    echo -e "${GREEN}[+] Verifying installation...${NC}"
+    if command -v ftcore >/dev/null 2>&1; then
+        echo -e "${GREEN}[✓] Installation successful!${NC}"
+        echo -e "Run with: ftcore -u example.com"
+    else
+        echo -e "${RED}[!] Installation verification failed!${NC}"
         exit 1
     fi
 }
 
 # Main installation flow
 main() {
-    check_existing
+    cleanup
+    verify_python
     install_dependencies
+    setup_venv
+    install_requirements
+    install_tools
     install_forticore
+    create_launcher
     verify_installation
-    
-    echo -e "\n\033[1;32m[✓] FortiCore installed successfully!\033[0m"
-    echo -e "\033[1;33m[i] Usage: ftcore -u <target-domain>\033[0m"
 }
 
-# Execute main function
+# Execute
 main
