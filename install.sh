@@ -95,9 +95,10 @@ install_forticore() {
     cat > "$BIN_LINK" << EOF
 #!/bin/bash
 source "$VENV_PATH/bin/activate"
-python -m forticore "\$@"
+python -m forticore "$@"
 EOF
     chmod 755 "$BIN_LINK"
+    chmod +x "$BIN_LINK"
 }
 
 # Security tools installation with version control
