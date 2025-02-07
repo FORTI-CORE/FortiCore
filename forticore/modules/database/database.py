@@ -126,7 +126,7 @@ class DatabaseScanner:
     #     except Exception as e:
     #         self.print_status(f"Error generating report: {e}","ERROR")
 
-    def prepare_scan_results(self) -> Dict[str, Any]:
+    def _prepare_scan_results(self) -> Dict[str, Any]:
         return {
             "target": self.target,
             "database": {
