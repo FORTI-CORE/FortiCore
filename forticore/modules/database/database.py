@@ -44,6 +44,14 @@ class DatabaseScanner:
             if process.returncode != 0:
                 print(f"[!] Error running sqlmap: {process.stderr.read()}")
                 return None
+            
+            """Generate the report after the scan is complete."""
+            scan_results = self._prepare_scan_results()
+            report_path = self.report_generator.generate_report(scan_results, f"{self.target}_scan_report", format=self.report_format)
+            self.print_status(f"Report generated: {report_path}")
+            
+        except Exception as e:
+            self.print_status(f"Error generating report: {e}","ERROR")
 
             self.raw_output = "".join(output)
             return self.raw_output
@@ -98,11 +106,14 @@ class DatabaseScanner:
         print(f"[+] Detected DBMS Type: {self.detected_dbms if self.detected_dbms else 'Unknown'}")
         print(f"[+] Databases found: {', '.join(self.all_databases) if self.all_databases else 'None found'}")
 
-    def generate_report(self):
-        """Generate the report after the scan is complete."""
-        scan_results = self._prepare_scan_results()
-        report_path = self.report_generator.generate_report(scan_results, f"{self.target}_scan_report", format=self.report_format)
-        print(f"Report generated: {report_path}")
+    # def generate_report(self):
+    #     try:
+    #         """Generate the report after the scan is complete."""
+    #         scan_results = self._prepare_scan_results()
+    #         report_path = self.report_generator.generate_report(scan_results, f"{self.target}_scan_report", format=self.report_format)
+    #         self.print_status(f"Report generated: {report_path}")
+    #     except Exception as e:
+    #         self.print_status(f"Error generating report: {e}","ERROR")
 
     def prepare_scan_results(self) -> Dict[str, Any]:
         return {
