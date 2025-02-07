@@ -1,5 +1,6 @@
 import subprocess
 import re
+from colorama import Fore, Style
 import time
 from urllib.parse import urlparse, parse_qs
 from typing import Set, Dict, Any
