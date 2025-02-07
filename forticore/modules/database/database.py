@@ -14,6 +14,16 @@ class DatabaseScanner:
         self.detected_dbms = None
         self.all_databases = set()
         self.raw_output = ""
+        
+        def print_status(self, message: str, status: str = "INFO"):
+            colors = {
+                "INFO": Fore.BLUE,
+                "SUCCESS": Fore.GREEN,
+                "WARNING": Fore.YELLOW,
+                "ERROR": Fore.RED
+        }
+        color = colors.get(status, Fore.WHITE)
+        print(f"{color}[{status}]{Style.RESET_ALL} {message}")
 
     def has_query_parameters(self, url):
         """Check if the URL contains query parameters."""
@@ -21,6 +31,7 @@ class DatabaseScanner:
         return bool(parse_qs(parsed_url.query))
 
     def run_sqlmap(self, additional_flags=None):
+        self.print_status("Checking for database..","INFO")
         try:
             # Base SQLMap command
             command = ["sqlmap", "-u", self.target, "--batch", "--dbs", "--level=1", "--risk=1"]
