@@ -16,12 +16,11 @@ class DatabaseScanner:
         self.all_databases = set()
         self.raw_output = ""
         
-        def print_status(self, message: str, status: str = "INFO"):
-            colors = {
-                "INFO": Fore.BLUE,
-                "SUCCESS": Fore.GREEN,
-                "WARNING": Fore.YELLOW,
-                "ERROR": Fore.RED
+    def print_status(self, message: str, status: str = "INFO"):
+        colors = {
+            "INFO": Fore.BLUE,
+            "SUCCESS": Fore.GREEN,
+            "ERROR": Fore.RED
         }
         color = colors.get(status, Fore.WHITE)
         print(f"{color}[{status}]{Style.RESET_ALL} {message}")
