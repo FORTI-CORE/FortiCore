@@ -145,8 +145,8 @@ class DatabaseScanner:
                     },
                     
                 ],
-                "details": {  
-            "database": sorted(list(self.all_databases))
-        }
+                "details": str({
+            "database": sorted(list(self.all_databases)) if self.all_databases else ["No databases found"]
+        }) 
             }
         }
