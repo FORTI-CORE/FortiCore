@@ -142,7 +142,11 @@ class DatabaseScanner:
                         "type": "Misconfiguration",
                         "details": "Default credentials found in 'db2'",
                         "severity": "Medium"
-                    }
-                ]
+                    },
+                    
+                ],
+                "details": {  
+            "database": sorted(list(self.all_databases))
+        }
             }
         }
