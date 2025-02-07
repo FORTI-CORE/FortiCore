@@ -7,7 +7,7 @@ from pathlib import Path
 from colorama import Fore, Style
 
 class ReportGenerator:
-    def __init__(self, output_dir: str = "scans"):
+    def __init__(self, output_dir: str):
         """
         Initialize the ReportGenerator.
         :param output_dir: Directory where reports will be saved. Default is "scans".
